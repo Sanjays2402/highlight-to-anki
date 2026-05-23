@@ -64,6 +64,48 @@
         </button>
       </div>
     </section>
+
+    <section class="card glass" id="batch-card" aria-live="polite">
+      <div class="card-head">
+        <span class="card-label">Batch</span>
+        <span class="pill pill-checking" id="batch-pill" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text" id="batch-count">0 queued</span>
+        </span>
+      </div>
+      <div class="card-body" id="batch-body">
+        <div class="empty" id="batch-empty">
+          <svg class="empty-art" width="96" height="72" viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 26c4-10 18-14 30-10 8 3 14 1 22-2 12-5 28 2 32 14 3 9-2 18-12 22-22 9-58 8-68-2-6-6-8-14-4-22z" opacity="0.35"/>
+            <rect x="30" y="30" width="42" height="30" rx="4"/>
+            <rect x="42" y="22" width="42" height="30" rx="4"/>
+            <path d="M48 32h26M48 40h18"/>
+          </svg>
+          <p class="empty-text">Nothing queued yet. Right-click a selection and choose <em>Add to Batch</em> to stack cards before sending.</p>
+        </div>
+        <ul class="batch-list" id="batch-list" hidden></ul>
+        <div class="kv kv-error" id="batch-error-row" hidden>
+          <span class="k">Error</span>
+          <span class="v" id="batch-error">—</span>
+        </div>
+      </div>
+      <div class="card-foot batch-foot">
+        <button id="batch-clear" class="btn btn-ghost" type="button" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16"/>
+            <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+            <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>
+          </svg>
+          <span>Clear</span>
+        </button>
+        <button id="batch-send" class="btn btn-primary" type="button" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 11l18-8-8 18-2-8-8-2z"/>
+          </svg>
+          <span>Send All</span>
+        </button>
+      </div>
+    </section>
   </main>
   <footer class="footer"><span class="version">v0.1.0</span></footer>
   <script type="module" src="popup.js"></script>

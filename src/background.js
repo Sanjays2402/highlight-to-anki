@@ -25,8 +25,11 @@ const TAG = "[highlight-to-anki:bg]";
 const MENU_ID = "h2a-send-to-anki";
 const MENU_ID_CLOZE = "h2a-send-to-anki-cloze";
 const MENU_ID_IMAGE = "h2a-send-image-to-anki";
+const MENU_ID_BATCH = "h2a-add-to-batch";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
+const BATCH_KEY = "h2a:batch";
+const BATCH_LIMIT = 100;
 const SETTINGS_KEY = "h2a:settings";
 const DEFAULT_SETTINGS = Object.freeze({
   defaultDeck: "",
@@ -97,7 +100,99 @@ function ensureMenu() {
         if (err) console.warn(TAG, "image menu create error:", err.message);
       },
     );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_BATCH,
+        title: "Add to Batch",
+        contexts: ["selection"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "batch menu create error:", err.message);
+      },
+    );
   });
+}
+
+/**
+ * Append a capture to the batch list. Each batch entry is the same
+ * shape as a staged pending entry so the send loop can reuse the
+ * single-card pipeline. The batch is a bounded FIFO of up to
+ * {@link BATCH_LIMIT} items.
+ * @param {object} capture
+ * @returns {Promise<object|null>} the appended entry, or null when capture is empty.
+ */
+async function addToBatch(capture) {
+  if (!capture || !capture.text) return null;
+  const store = await chrome.storage.local.get(BATCH_KEY);
+  const list = Array.isArray(store[BATCH_KEY]) ? store[BATCH_KEY] : [];
+  const entry = {
+    ...capture,
+    id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    status: "queued",
+    noteId: null,
+    error: null,
+  };
+  list.push(entry);
+  if (list.length > BATCH_LIMIT) list.splice(0, list.length - BATCH_LIMIT);
+  await chrome.storage.local.set({ [BATCH_KEY]: list });
+  return entry;
+}
+
+/**
+ * Send every queued batch capture to Anki, one card per selection.
+ * Successful items are removed from the batch; failed items are
+ * retained with their error so the user can retry. Returns a summary
+ * that the popup uses to render the result toast.
+ *
+ * @returns {Promise<{ ok: boolean, total: number, sent: number, failed: number, errors: string[], remaining: object[] }>}
+ */
+async function sendBatch() {
+  const settings = await loadSettings();
+  if (!settings.defaultDeck || !settings.defaultModel) {
+    return {
+      ok: false,
+      total: 0,
+      sent: 0,
+      failed: 0,
+      errors: ["No default deck/model configured"],
+      remaining: [],
+    };
+  }
+  const store = await chrome.storage.local.get(BATCH_KEY);
+  const list = Array.isArray(store[BATCH_KEY]) ? store[BATCH_KEY] : [];
+  const total = list.length;
+  const remaining = [];
+  const errors = [];
+  let sent = 0;
+  let failed = 0;
+  for (const entry of list) {
+    if (!entry || !entry.text) continue;
+    const { front, back } = buildCardFields(entry);
+    const siteTag = hostnameTag(entry.hostname);
+    const tags = siteTag
+      ? ["highlight-to-anki", "batch", siteTag]
+      : ["highlight-to-anki", "batch"];
+    try {
+      const noteId = await ankiAddNote({
+        deckName: settings.defaultDeck,
+        modelName: settings.defaultModel,
+        front,
+        back,
+        tags,
+      });
+      sent += 1;
+      console.log(TAG, "batch sent note", noteId);
+      void noteId;
+    } catch (err) {
+      failed += 1;
+      const msg = err && err.message ? err.message : String(err);
+      errors.push(msg);
+      remaining.push({ ...entry, status: "failed", error: msg });
+    }
+  }
+  await chrome.storage.local.set({ [BATCH_KEY]: remaining });
+  return { ok: failed === 0 && total > 0, total, sent, failed, errors, remaining };
 }
 
 /**
@@ -402,11 +497,20 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     const isBasic = info.menuItemId === MENU_ID;
     const isCloze = info.menuItemId === MENU_ID_CLOZE;
     const isImage = info.menuItemId === MENU_ID_IMAGE;
-    if (!isBasic && !isCloze && !isImage) return;
+    const isBatch = info.menuItemId === MENU_ID_BATCH;
+    if (!isBasic && !isCloze && !isImage && !isBatch) return;
     if (!tab || tab.id == null) return;
     const capture = isImage
       ? captureFromImage(info, tab)
       : await requestCapture(tab.id, info.selectionText);
+    if (isBatch) {
+      const batchEntry = await addToBatch(capture);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:batch-updated", payload: batchEntry });
+      } catch (_) { /* no popup open */ }
+      if (batchEntry) console.log(TAG, "queued in batch", (capture.text || "").slice(0, 60));
+      return;
+    }
     const entry = await stagePending(capture);
     try {
       await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
@@ -532,6 +636,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const result = await sendCaptureAsImage(entry);
       sendResponse({ ok: result.ok, payload: result, error: result.error });
     })();
+    return true;
+  }
+  if (msg.type === "h2a:list-batch") {
+    chrome.storage.local.get(BATCH_KEY).then((store) => {
+      sendResponse({ ok: true, payload: store[BATCH_KEY] || [] });
+    });
+    return true;
+  }
+  if (msg.type === "h2a:clear-batch") {
+    chrome.storage.local.set({ [BATCH_KEY]: [] }).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.type === "h2a:send-batch") {
+    sendBatch()
+      .then((result) => sendResponse({ ok: result.ok, payload: result }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
     return true;
   }
   if (msg.type === "h2a:set-settings") {
