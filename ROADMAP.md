@@ -20,7 +20,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Keyboard shortcut to send selection without context menu
 - [x] Duplicate detection: warn if selection already a card
 - [x] Card preview rendering in popup before send
-- [ ] Per-site default deck rules
+- [x] Per-site default deck rules
 - [ ] Markdown formatting support for selections (bold/italic/code)
 - [ ] Export recent cards history to JSON
 - [ ] Toast notifications for send success/failure with undo

@@ -200,6 +200,50 @@ body[data-theme="light"] .glass {
 .templates-empty svg { color: rgb(var(--accent)); opacity: 0.7; }
 .templates-empty p { margin: 0; font-size: 12px; max-width: 280px; }
 
+.site-rules-list { display: flex; flex-direction: column; gap: 12px; }
+.site-rule-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px; align-items: end;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  transition: border-color 200ms var(--ease), background 200ms var(--ease);
+}
+.site-rule-row:hover { border-color: var(--line-strong); }
+.site-rule-row .field { gap: 4px; }
+.site-rule-row label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-soft); font-weight: 600; }
+.site-rule-row input[type="text"] {
+  font: inherit; color: var(--fg);
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--glass-strong);
+  outline: none;
+  transition: border-color 200ms var(--ease), box-shadow 200ms var(--ease);
+}
+.site-rule-row input[type="text"]::placeholder { color: var(--fg-soft); }
+.site-rule-row input[type="text"]:hover { border-color: rgb(var(--accent) / 0.5); }
+.site-rule-row input[type="text"]:focus { border-color: rgb(var(--accent) / 0.7); box-shadow: 0 0 0 3px rgb(var(--accent) / 0.18); }
+.site-rule-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  margin-bottom: 4px;
+  border-radius: 9px;
+  border: 1px solid var(--line-strong);
+  background: transparent; color: var(--fg-soft); cursor: pointer;
+  transition: color 200ms var(--ease), background 200ms var(--ease), border-color 200ms var(--ease);
+}
+.site-rule-remove:hover { color: rgb(var(--bad)); border-color: rgb(var(--bad) / 0.4); background: rgb(var(--bad) / 0.08); }
+.site-rule-remove:focus-visible { outline: 2px solid rgb(var(--accent) / 0.6); outline-offset: 2px; }
+.site-rules-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 20px 8px 4px; text-align: center; color: var(--fg-soft);
+}
+.site-rules-empty svg { color: rgb(var(--accent)); opacity: 0.7; }
+.site-rules-empty p { margin: 0; font-size: 12px; max-width: 280px; }
+
 .empty { padding: 32px 24px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; color: var(--fg-dim); }
 .empty svg { color: rgb(var(--accent)); margin-bottom: 4px; }
 .empty h2 { margin: 0; font-size: 16px; font-weight: 600; }

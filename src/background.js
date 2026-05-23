@@ -21,6 +21,7 @@ import {
   buildImageCardFields,
   hostnameTag,
   resolveFieldNames,
+  resolveSiteDeck,
 } from "./anki.js";
 
 const TAG = "[highlight-to-anki:bg]";
@@ -41,6 +42,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   defaultModel: "",
   clozeModel: "",
   fieldTemplates: {},
+  siteRules: [],
   theme: "auto",
   updatedAt: null,
 });
@@ -55,6 +57,33 @@ const THEME_PREFERENCES = new Set(["auto", "dark", "light"]);
  * @param {unknown} raw
  * @returns {Record<string, {frontField?:string, backField?:string, textField?:string, extraField?:string}>}
  */
+/**
+ * Sanitise the per-site deck rules list. Each entry is
+ * `{ hostname, deck }` where both fields are required and non-empty.
+ * Hostnames are lowercased and de-`www.`'d; duplicates are dropped
+ * keeping the first occurrence so the user-visible ordering wins.
+ *
+ * @param {unknown} raw
+ * @returns {Array<{ hostname: string, deck: string }>}
+ */
+function sanitiseSiteRules(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    let host = typeof item.hostname === "string" ? item.hostname.trim().toLowerCase() : "";
+    const deck = typeof item.deck === "string" ? item.deck.trim() : "";
+    if (!host || !deck) continue;
+    if (host.startsWith("www.")) host = host.slice(4);
+    host = host.replace(/\s+/g, "");
+    if (!host || seen.has(host)) continue;
+    seen.add(host);
+    out.push({ hostname: host, deck });
+  }
+  return out;
+}
+
 function sanitiseTemplates(raw) {
   if (!raw || typeof raw !== "object") return {};
   const out = {};
@@ -123,6 +152,9 @@ async function saveSettings(patch) {
     fieldTemplates: patch.fieldTemplates !== undefined
       ? sanitiseTemplates(patch.fieldTemplates)
       : (current.fieldTemplates || {}),
+    siteRules: patch.siteRules !== undefined
+      ? sanitiseSiteRules(patch.siteRules)
+      : (Array.isArray(current.siteRules) ? current.siteRules : []),
     theme: THEME_PREFERENCES.has(patch.theme) ? patch.theme : (current.theme || "auto"),
     updatedAt: new Date().toISOString(),
   };
@@ -240,6 +272,7 @@ async function sendBatch() {
       remaining: [],
     };
   }
+  const siteRules = Array.isArray(settings.siteRules) ? settings.siteRules : [];
   const store = await chrome.storage.local.get(BATCH_KEY);
   const list = Array.isArray(store[BATCH_KEY]) ? store[BATCH_KEY] : [];
   const total = list.length;
@@ -254,10 +287,11 @@ async function sendBatch() {
     const tags = siteTag
       ? ["highlight-to-anki", "batch", siteTag]
       : ["highlight-to-anki", "batch"];
+    const batchDeck = resolveSiteDeck(siteRules, entry.hostname) || settings.defaultDeck;
     try {
-      const batchFields = resolveFieldNames(settings, settings.defaultDeck);
+      const batchFields = resolveFieldNames(settings, batchDeck);
       const noteId = await ankiAddNote({
-        deckName: settings.defaultDeck,
+        deckName: batchDeck,
         modelName: settings.defaultModel,
         front,
         back,
@@ -267,7 +301,7 @@ async function sendBatch() {
       });
       sent += 1;
       console.log(TAG, "batch sent note", noteId);
-      await appendHistory({ ...entry, noteId, sentAt: new Date().toISOString() }, { mode: "basic", noteId, deck: settings.defaultDeck });
+      await appendHistory({ ...entry, noteId, sentAt: new Date().toISOString() }, { mode: "basic", noteId, deck: batchDeck });
     } catch (err) {
       failed += 1;
       const msg = err && err.message ? err.message : String(err);
@@ -446,10 +480,11 @@ async function sendCaptureToAnki(entry) {
   await patchPending(entry.id, { status: "sending", error: null });
   const siteTag = hostnameTag(entry.hostname);
   const tags = siteTag ? ["highlight-to-anki", siteTag] : ["highlight-to-anki"];
-  const fields = resolveFieldNames(settings, settings.defaultDeck);
+  const targetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
+  const fields = resolveFieldNames(settings, targetDeck);
   try {
     const noteId = await ankiAddNote({
-      deckName: settings.defaultDeck,
+      deckName: targetDeck,
       modelName: settings.defaultModel,
       front,
       back,
@@ -458,7 +493,7 @@ async function sendCaptureToAnki(entry) {
       backField: fields.backField,
     });
     const patched = await patchPending(entry.id, { status: "sent", noteId, error: null, sentAt: new Date().toISOString() });
-    await appendHistory(patched || { ...entry, noteId }, { mode: "basic", noteId, deck: settings.defaultDeck });
+    await appendHistory(patched || { ...entry, noteId }, { mode: "basic", noteId, deck: targetDeck });
     return { ok: true, noteId, error: null, entry: patched || entry };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
@@ -501,10 +536,11 @@ async function sendCaptureAsImage(entry) {
   const tags = siteTag
     ? ["highlight-to-anki", "image", siteTag]
     : ["highlight-to-anki", "image"];
-  const imgFields = resolveFieldNames(settings, settings.defaultDeck);
+  const imgTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
+  const imgFields = resolveFieldNames(settings, imgTargetDeck);
   try {
     const noteId = await ankiAddImageNote({
-      deckName: settings.defaultDeck,
+      deckName: imgTargetDeck,
       modelName: settings.defaultModel,
       imageUrl: entry.imageUrl,
       back,
@@ -519,7 +555,7 @@ async function sendCaptureAsImage(entry) {
       error: null,
       sentAt: new Date().toISOString(),
     });
-    await appendHistory(patched || { ...entry, noteId, mode: "image" }, { mode: "image", noteId, deck: settings.defaultDeck });
+    await appendHistory(patched || { ...entry, noteId, mode: "image" }, { mode: "image", noteId, deck: imgTargetDeck });
     return { ok: true, noteId, error: null, entry: patched || entry };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
@@ -561,10 +597,11 @@ async function sendCaptureAsCloze(entry) {
   const tags = siteTag
     ? ["highlight-to-anki", "cloze", siteTag]
     : ["highlight-to-anki", "cloze"];
-  const clozeFields = resolveFieldNames(settings, settings.defaultDeck);
+  const clozeTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
+  const clozeFields = resolveFieldNames(settings, clozeTargetDeck);
   try {
     const noteId = await ankiAddClozeNote({
-      deckName: settings.defaultDeck,
+      deckName: clozeTargetDeck,
       modelName,
       text,
       extra,
@@ -579,7 +616,7 @@ async function sendCaptureAsCloze(entry) {
       error: null,
       sentAt: new Date().toISOString(),
     });
-    await appendHistory(patched || { ...entry, noteId, mode: "cloze" }, { mode: "cloze", noteId, deck: settings.defaultDeck });
+    await appendHistory(patched || { ...entry, noteId, mode: "cloze" }, { mode: "cloze", noteId, deck: clozeTargetDeck });
     return { ok: true, noteId, error: null, entry: patched || entry };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);

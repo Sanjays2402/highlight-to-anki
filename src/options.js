@@ -24,14 +24,19 @@ const els = {
   templatesEmpty: document.getElementById("templates-empty"),
   templatesSaveState: document.getElementById("templates-save-state"),
   addTemplate: document.getElementById("add-template-btn"),
+  siteRulesList: document.getElementById("site-rules-list"),
+  siteRulesEmpty: document.getElementById("site-rules-empty"),
+  siteRulesSaveState: document.getElementById("site-rules-save-state"),
+  addSiteRule: document.getElementById("add-site-rule-btn"),
 };
 
 const state = {
-  settings: { defaultDeck: "", defaultModel: "", clozeModel: "", fieldTemplates: {} },
+  settings: { defaultDeck: "", defaultModel: "", clozeModel: "", fieldTemplates: {}, siteRules: [] },
   decks: [],
   models: [],
   dirty: false,
   templates: [],
+  siteRules: [],
 };
 
 function setPill(stateName, label) {
@@ -98,6 +103,7 @@ async function loadSettings() {
         fieldTemplates: reply.payload.fieldTemplates && typeof reply.payload.fieldTemplates === "object"
           ? reply.payload.fieldTemplates
           : {},
+        siteRules: Array.isArray(reply.payload.siteRules) ? reply.payload.siteRules : [],
       };
       state.templates = Object.entries(state.settings.fieldTemplates).map(([deck, tpl]) => ({
         deck,
@@ -105,6 +111,10 @@ async function loadSettings() {
         backField: (tpl && tpl.backField) || "",
         textField: (tpl && tpl.textField) || "",
         extraField: (tpl && tpl.extraField) || "",
+      }));
+      state.siteRules = state.settings.siteRules.map((r) => ({
+        hostname: (r && r.hostname) || "",
+        deck: (r && r.deck) || "",
       }));
     }
   } catch (err) {
@@ -153,6 +163,7 @@ async function refresh() {
   populateSelect(els.model, state.models, state.settings.defaultModel, "No note types");
   if (els.clozeModel) populateSelect(els.clozeModel, state.models, state.settings.clozeModel, "No note types");
   renderTemplates();
+  renderSiteRules();
 
   state.dirty = false;
   els.save.disabled = true;
@@ -173,16 +184,19 @@ async function save() {
       defaultModel: els.model.value,
       clozeModel: els.clozeModel ? els.clozeModel.value : "",
       fieldTemplates: templatesToMap(),
+      siteRules: siteRulesToList(),
     });
     if (reply && reply.ok) {
       state.settings.defaultDeck = reply.payload.defaultDeck;
       state.settings.defaultModel = reply.payload.defaultModel;
       state.settings.clozeModel = reply.payload.clozeModel || "";
       state.settings.fieldTemplates = reply.payload.fieldTemplates || {};
+      state.settings.siteRules = Array.isArray(reply.payload.siteRules) ? reply.payload.siteRules : [];
       state.dirty = false;
       setSaveState("saved", "Saved");
       setTemplatesSaveState("saved", "Saved");
-      setTimeout(() => { setSaveState("", ""); setTemplatesSaveState("", ""); }, 1800);
+      setSiteRulesSaveState("saved", "Saved");
+      setTimeout(() => { setSaveState("", ""); setTemplatesSaveState("", ""); setSiteRulesSaveState("", ""); }, 1800);
     } else {
       throw new Error(reply && reply.error ? reply.error : "Save failed");
     }
@@ -198,6 +212,7 @@ if (els.clozeModel) els.clozeModel.addEventListener("change", onChange);
 els.save.addEventListener("click", save);
 els.refresh.addEventListener("click", refresh);
 if (els.addTemplate) els.addTemplate.addEventListener("click", addTemplate);
+if (els.addSiteRule) els.addSiteRule.addEventListener("click", addSiteRule);
 
 function templatesToMap() {
   const out = {};
@@ -348,6 +363,146 @@ function addTemplate() {
   }
   onChange();
   setTemplatesSaveState("", "Unsaved changes");
+}
+
+function siteRulesToList() {
+  const out = [];
+  for (const r of state.siteRules) {
+    let host = (r.hostname || "").trim().toLowerCase();
+    const deck = (r.deck || "").trim();
+    if (!host || !deck) continue;
+    if (host.startsWith("www.")) host = host.slice(4);
+    out.push({ hostname: host, deck });
+  }
+  return out;
+}
+
+function setSiteRulesSaveState(stateName, text) {
+  if (!els.siteRulesSaveState) return;
+  els.siteRulesSaveState.dataset.state = stateName || "";
+  els.siteRulesSaveState.textContent = text || "";
+}
+
+function renderSiteRules() {
+  if (!els.siteRulesList) return;
+  els.siteRulesList.innerHTML = "";
+  if (!state.siteRules.length) {
+    if (els.siteRulesEmpty) els.siteRulesEmpty.hidden = false;
+    return;
+  }
+  if (els.siteRulesEmpty) els.siteRulesEmpty.hidden = true;
+
+  const decks = state.decks.slice();
+  state.siteRules.forEach((rule, idx) => {
+    const row = document.createElement("div");
+    row.className = "site-rule-row";
+    row.dataset.idx = String(idx);
+
+    const hostField = document.createElement("div");
+    hostField.className = "field site-rule-host";
+    const hostLbl = document.createElement("label");
+    hostLbl.textContent = "Hostname";
+    const hostInput = document.createElement("input");
+    hostInput.type = "text";
+    hostInput.placeholder = "example.com";
+    hostInput.value = rule.hostname || "";
+    hostInput.dataset.idx = String(idx);
+    hostInput.dataset.key = "hostname";
+    hostInput.spellcheck = false;
+    hostInput.autocomplete = "off";
+    hostInput.id = `site-rule-${idx}-host`;
+    hostLbl.htmlFor = hostInput.id;
+    hostInput.addEventListener("input", onSiteRuleChange);
+    hostField.appendChild(hostLbl);
+    hostField.appendChild(hostInput);
+
+    const deckField = document.createElement("div");
+    deckField.className = "field site-rule-deck";
+    const deckLbl = document.createElement("label");
+    deckLbl.textContent = "Deck";
+    const deckWrap = document.createElement("div");
+    deckWrap.className = "select-wrap";
+    deckWrap.innerHTML = `
+      <svg class="select-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 7h13l-3-3M3 7l3 3"/>
+        <path d="M21 17H8l3 3M21 17l-3-3"/>
+      </svg>
+      <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    `;
+    const deckSel = document.createElement("select");
+    deckSel.dataset.idx = String(idx);
+    deckSel.dataset.key = "deck";
+    deckSel.id = `site-rule-${idx}-deck`;
+    deckLbl.htmlFor = deckSel.id;
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "— Select a deck —";
+    deckSel.appendChild(blank);
+    let matched = !rule.deck;
+    for (const name of decks) {
+      const o = document.createElement("option");
+      o.value = name;
+      o.textContent = name;
+      if (name === rule.deck) { o.selected = true; matched = true; }
+      deckSel.appendChild(o);
+    }
+    if (!matched && rule.deck) {
+      const o = document.createElement("option");
+      o.value = rule.deck;
+      o.textContent = `${rule.deck} (missing)`;
+      o.selected = true;
+      deckSel.appendChild(o);
+    }
+    deckSel.addEventListener("change", onSiteRuleChange);
+    deckWrap.appendChild(deckSel);
+    deckField.appendChild(deckLbl);
+    deckField.appendChild(deckWrap);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "site-rule-remove";
+    remove.dataset.idx = String(idx);
+    remove.setAttribute("aria-label", "Remove site rule");
+    remove.title = "Remove site rule";
+    remove.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/></svg>`;
+    remove.addEventListener("click", onSiteRuleRemove);
+
+    row.appendChild(hostField);
+    row.appendChild(deckField);
+    row.appendChild(remove);
+    els.siteRulesList.appendChild(row);
+  });
+}
+
+function onSiteRuleChange(ev) {
+  const idx = Number(ev.currentTarget.dataset.idx);
+  const key = ev.currentTarget.dataset.key;
+  if (!Number.isFinite(idx) || !state.siteRules[idx] || !key) return;
+  state.siteRules[idx][key] = ev.currentTarget.value;
+  onChange();
+  setSiteRulesSaveState("", "Unsaved changes");
+}
+
+function onSiteRuleRemove(ev) {
+  const idx = Number(ev.currentTarget.dataset.idx);
+  if (!Number.isFinite(idx)) return;
+  state.siteRules.splice(idx, 1);
+  renderSiteRules();
+  onChange();
+  setSiteRulesSaveState("", "Unsaved changes");
+}
+
+function addSiteRule() {
+  state.siteRules.push({ hostname: "", deck: "" });
+  renderSiteRules();
+  const rows = els.siteRulesList.querySelectorAll(".site-rule-row");
+  const last = rows[rows.length - 1];
+  if (last) {
+    const input = last.querySelector("input");
+    if (input) input.focus();
+  }
+  onChange();
+  setSiteRulesSaveState("", "Unsaved changes");
 }
 
 

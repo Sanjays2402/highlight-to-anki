@@ -128,6 +128,54 @@ export function resolveFieldNames(settings, deckName) {
 }
 
 /**
+ * Normalise a hostname for site-rule matching: lowercase, trimmed,
+ * with a leading `www.` stripped so subdomain canonicals collapse to
+ * the apex variant. Returns an empty string when nothing usable is
+ * supplied so callers can short-circuit.
+ *
+ * @param {string|undefined|null} h
+ * @returns {string}
+ */
+export function normaliseRuleHost(h) {
+  if (h == null) return "";
+  let s = String(h).trim().toLowerCase();
+  if (!s) return "";
+  if (s.startsWith("www.")) s = s.slice(4);
+  return s.replace(/\s+/g, "");
+}
+
+/**
+ * Resolve a per-site default deck from a list of user-configured
+ * rules. Each rule is `{ hostname, deck }`. Matching prefers an exact
+ * hostname hit, falling back to the longest suffix match so a rule
+ * for `example.com` also picks up `blog.example.com` (but not
+ * `notexample.com`). Returns the matched rule's deck name or `null`.
+ *
+ * @param {Array<{ hostname?: string, deck?: string }>|undefined|null} rules
+ * @param {string|undefined|null} hostname
+ * @returns {string|null}
+ */
+export function resolveSiteDeck(rules, hostname) {
+  if (!Array.isArray(rules) || rules.length === 0) return null;
+  const host = normaliseRuleHost(hostname);
+  if (!host) return null;
+  let best = null;
+  let bestLen = -1;
+  for (const rule of rules) {
+    if (!rule || typeof rule !== "object") continue;
+    const ruleHost = normaliseRuleHost(rule.hostname);
+    const deck = typeof rule.deck === "string" ? rule.deck.trim() : "";
+    if (!ruleHost || !deck) continue;
+    if (host === ruleHost) return deck;
+    if (host.endsWith(`.${ruleHost}`) && ruleHost.length > bestLen) {
+      best = deck;
+      bestLen = ruleHost.length;
+    }
+  }
+  return best;
+}
+
+/**
  * Build the `{ front, back }` field payload for a basic note from a
  * capture snapshot. Front is the raw selection text; back is the
  * surrounding paragraph (when available) plus a linked citation back

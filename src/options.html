@@ -124,6 +124,31 @@
       </div>
     </section>
 
+    <section class="card glass" id="site-rules-card">
+      <div class="card-head">
+        <span class="card-label">Per-site deck rules</span>
+        <span class="card-hint">Route captures by hostname</span>
+      </div>
+      <p class="hint" style="margin-top: -4px;">Captures from a matched hostname (or any of its subdomains) land in the listed deck instead of the default. Strip the <code>www.</code> when adding — matching is case-insensitive and suffix-aware.</p>
+      <div class="site-rules-list" id="site-rules-list"></div>
+      <div class="site-rules-empty" id="site-rules-empty" hidden>
+        <svg width="96" height="72" viewBox="0 0 192 144" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="96" cy="72" r="40" opacity="0.35"/>
+          <path d="M56 72h80M96 32a52 52 0 0 1 0 80M96 32a52 52 0 0 0 0 80"/>
+        </svg>
+        <p>No site rules yet. Add one to route a hostname to a custom deck.</p>
+      </div>
+      <div class="actions">
+        <span class="save-state" id="site-rules-save-state" aria-live="polite"></span>
+        <button id="add-site-rule-btn" class="btn btn-ghost" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span>Add site rule</span>
+        </button>
+      </div>
+    </section>
+
     <section class="card glass" id="appearance-card">
       <div class="card-head">
         <span class="card-label">Appearance</span>
