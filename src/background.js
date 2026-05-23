@@ -8,6 +8,8 @@
 // All chrome.* APIs used here are covered by manifest permissions:
 //   contextMenus, storage, activeTab, scripting, <all_urls>.
 
+import { healthCheck as ankiHealthCheck } from "./anki.js";
+
 const TAG = "[highlight-to-anki:bg]";
 const MENU_ID = "h2a-send-to-anki";
 const PENDING_KEY = "h2a:pendingCaptures";
@@ -141,6 +143,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "h2a:clear-pending") {
     chrome.storage.local.set({ [PENDING_KEY]: [] }).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.type === "h2a:anki-health") {
+    ankiHealthCheck().then((status) => sendResponse({ ok: true, payload: status }));
     return true;
   }
   return false;

@@ -4,7 +4,7 @@ const m = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
 const must = ["manifest_version","name","version","description"];
 for (const k of must) if (!m[k]) { console.error("missing manifest key:", k); process.exit(1); }
 if (m.manifest_version !== 3) { console.error("manifest_version must be 3"); process.exit(1); }
-for (const p of ["src/popup.html","src/popup.js","src/popup.css","src/background.js","src/content.js"])
+for (const p of ["src/popup.html","src/popup.js","src/popup.css","src/background.js","src/content.js","src/anki.js"])
   if (!fs.existsSync(p)) { console.error("missing file:", p); process.exit(1); }
 if (!Array.isArray(m.content_scripts) || !m.content_scripts.length) { console.error("manifest content_scripts missing"); process.exit(1); }
 const cs0 = m.content_scripts[0];
@@ -15,4 +15,20 @@ if (!Array.isArray(m.permissions) || !m.permissions.includes("contextMenus")) { 
 const bg = fs.readFileSync("src/background.js", "utf8");
 if (!bg.includes("contextMenus.create") || !bg.includes("Send to Anki")) { console.error("background.js must register 'Send to Anki' context menu"); process.exit(1); }
 if (!bg.includes("contexts: [\"selection\"]") && !bg.includes("contexts:[\"selection\"]")) { console.error("context menu must be scoped to selection context"); process.exit(1); }
+
+// AnkiConnect health-check feature wiring.
+const anki = fs.readFileSync("src/anki.js", "utf8");
+if (!anki.includes("healthCheck") || !anki.includes("127.0.0.1:8765")) {
+  console.error("src/anki.js must export healthCheck targeting 127.0.0.1:8765"); process.exit(1);
+}
+if (!bg.includes("h2a:anki-health")) { console.error("background.js must handle h2a:anki-health message"); process.exit(1); }
+const popupHtml = fs.readFileSync("src/popup.html", "utf8");
+if (!popupHtml.includes("health-pill") || !popupHtml.includes("AnkiConnect")) {
+  console.error("popup.html must render an AnkiConnect health pill"); process.exit(1);
+}
+const popupJs = fs.readFileSync("src/popup.js", "utf8");
+if (!popupJs.includes("h2a:anki-health")) { console.error("popup.js must request AnkiConnect health from the service worker"); process.exit(1); }
+if (!Array.isArray(m.host_permissions) || !m.host_permissions.some((h) => h.includes("127.0.0.1:8765"))) {
+  console.error("manifest host_permissions must include http://127.0.0.1:8765/*"); process.exit(1);
+}
 console.log("\u2713 smoke ok");
