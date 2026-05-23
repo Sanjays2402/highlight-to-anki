@@ -1,0 +1,12 @@
+{
+  "name": "highlight-to-anki",
+  "version": "0.1.0",
+  "description": "Select text → send to local Anki via AnkiConnect with source URL auto-cited.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "echo 'no-op'",
+    "test": "node scripts/smoke.mjs",
+    "build": "echo 'no-op'"
+  }
+}

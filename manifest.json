@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Highlight to Anki",
+  "version": "0.1.0",
+  "description": "Select text → send to local Anki via AnkiConnect with source URL auto-cited.",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://127.0.0.1:8765/*"
+  ],
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_title": "Highlight to Anki",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}
