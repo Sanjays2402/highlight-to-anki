@@ -38,6 +38,7 @@ const els = {
   recentEmpty: document.getElementById("recent-empty"),
   recentList: document.getElementById("recent-list"),
   recentClear: document.getElementById("recent-clear"),
+  recentExport: document.getElementById("recent-export"),
   syncPill: document.getElementById("sync-pill"),
   syncStatusText: document.getElementById("sync-status-text"),
   syncInflight: document.getElementById("sync-inflight"),
@@ -334,6 +335,46 @@ function renderHistory(items) {
     }
   }
   if (els.recentClear) els.recentClear.disabled = n === 0;
+  if (els.recentExport) els.recentExport.disabled = n === 0;
+}
+
+function tsForFilename(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+async function exportHistory() {
+  if (!els.recentExport) return;
+  const btn = els.recentExport;
+  const label = btn.querySelector("span");
+  const prev = label ? label.textContent : null;
+  btn.disabled = true;
+  if (label) label.textContent = "Exporting…";
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:list-history" });
+    const list = reply && reply.ok && Array.isArray(reply.payload) ? reply.payload : [];
+    const doc = {
+      schema: "highlight-to-anki.history.v1",
+      exportedAt: new Date().toISOString(),
+      count: list.length,
+      items: list,
+    };
+    const json = JSON.stringify(doc, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `highlight-to-anki-history-${tsForFilename(new Date())}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (err) {
+    console.warn(TAG, "history export failed:", err);
+  } finally {
+    if (label && prev !== null) label.textContent = prev;
+    btn.disabled = false;
+  }
 }
 
 async function loadHistory() {
@@ -355,6 +396,7 @@ async function clearHistory() {
 }
 
 els.recentClear?.addEventListener("click", clearHistory);
+els.recentExport?.addEventListener("click", exportHistory);
 
 /** Render the sync indicator card. */
 function renderSync(s) {

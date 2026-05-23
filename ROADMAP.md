@@ -22,7 +22,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Card preview rendering in popup before send
 - [x] Per-site default deck rules
 - [x] Markdown formatting support for selections (bold/italic/code)
-- [ ] Export recent cards history to JSON
+- [x] Export recent cards history to JSON
 - [ ] Toast notifications for send success/failure with undo
 - [ ] AnkiConnect connection settings (host/port) in options
 - [ ] Selection screenshot mode: capture region as card image
