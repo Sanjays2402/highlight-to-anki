@@ -363,6 +363,54 @@ export function buildClozeFields(capture) {
 }
 
 /**
+ * Build reverse-card fields from a capture. Where the basic card asks
+ * the user to recall the *context* given the selection, a reverse card
+ * flips the prompt: the surrounding paragraph (with the highlighted
+ * selection blanked out) becomes the front, and the selection itself
+ * — the term you're trying to recall — becomes the back, alongside
+ * the usual source citation.
+ *
+ * When no surrounding paragraph is available we fall back to using
+ * the page title (or hostname) as the prompt so the card still has a
+ * meaningful question rather than a blank front.
+ *
+ * @param {{ text?: string, paragraph?: string, url?: string, title?: string, hostname?: string }} capture
+ * @returns {{ front: string, back: string }}
+ */
+export function buildReverseCardFields(capture) {
+  const cap = capture || {};
+  const selection = (cap.text || "").trim();
+  const paragraph = (cap.paragraph || "").trim();
+  const url = (cap.url || "").trim();
+  const title = (cap.title || cap.hostname || url || "source").trim();
+
+  const BLANK = '<span class="h2a-blank">_____</span>';
+  let front;
+  if (paragraph && selection && paragraph !== selection && paragraph.includes(selection)) {
+    const escPara = escapeHtml(paragraph).replace(/\n+/g, "<br>");
+    const escSel = escapeHtml(selection).replace(/\n+/g, "<br>");
+    const idx = escPara.indexOf(escSel);
+    const MARK = "\u0000H2A_BLANK\u0000";
+    const spliced = escPara.slice(0, idx) + MARK + escPara.slice(idx + escSel.length);
+    front = renderInlineMarkdown(spliced).replace(MARK, BLANK);
+  } else if (paragraph && paragraph !== selection) {
+    front = renderInlineMarkdown(escapeHtml(paragraph)).replace(/\n+/g, "<br>")
+      + `<br><br>${BLANK}`;
+  } else {
+    front = `<p class="h2a-prompt">From: ${escapeHtml(title)}</p>${BLANK}`;
+  }
+
+  const answer = renderInlineMarkdown(escapeHtml(selection)).replace(/\n+/g, "<br>");
+  const parts = [`<p class="h2a-answer">${answer}</p>`];
+  if (url) {
+    parts.push(`<p class="h2a-source"><a href="${escapeHtml(url)}">${escapeHtml(title)}</a></p>`);
+  } else if (title) {
+    parts.push(`<p class="h2a-source">${escapeHtml(title)}</p>`);
+  }
+  return { front, back: parts.join("\n") };
+}
+
+/**
  * Build a stable, filesystem-safe filename for an image we are about
  * to upload to Anki's media collection. We prefer the original
  * basename when it carries a sensible extension so Anki renders the

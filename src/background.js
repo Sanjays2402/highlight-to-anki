@@ -20,6 +20,7 @@ import {
   buildCardFields,
   buildClozeFields,
   buildImageCardFields,
+  buildReverseCardFields,
   hostnameTag,
   resolveFieldNames,
   resolveSiteDeck,
@@ -33,6 +34,7 @@ import {
 const TAG = "[highlight-to-anki:bg]";
 const MENU_ID = "h2a-send-to-anki";
 const MENU_ID_CLOZE = "h2a-send-to-anki-cloze";
+const MENU_ID_REVERSE = "h2a-send-to-anki-reverse";
 const MENU_ID_IMAGE = "h2a-send-image-to-anki";
 const MENU_ID_BATCH = "h2a-add-to-batch";
 const MENU_ID_EDIT = "h2a-edit-and-send";
@@ -217,6 +219,17 @@ function ensureMenu() {
       () => {
         const err = chrome.runtime.lastError;
         if (err) console.warn(TAG, "cloze menu create error:", err.message);
+      },
+    );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_REVERSE,
+        title: "Send to Anki (Reverse)",
+        contexts: ["selection"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "reverse menu create error:", err.message);
       },
     );
     chrome.contextMenus.create(
@@ -693,6 +706,68 @@ async function sendCaptureAsCloze(entry) {
 }
 
 /**
+ * Send a capture entry to Anki as a reverse-prompt note. The front
+ * shows the surrounding paragraph with the selection blanked out;
+ * the back surfaces the selection itself plus the source citation.
+ * Uses the configured default deck/model and tags the card `reverse`
+ * so it's easy to filter inside Anki.
+ *
+ * @param {object} entry staged capture
+ * @returns {Promise<{ ok: boolean, noteId: number|null, error: string|null, entry: object }>}
+ */
+async function sendCaptureAsReverse(entry) {
+  if (!entry || !entry.text) {
+    return { ok: false, noteId: null, error: "empty capture", entry };
+  }
+  const settings = await loadSettings();
+  if (!settings.defaultDeck || !settings.defaultModel) {
+    const patched = await patchPending(entry.id, {
+      status: "needs-config",
+      error: "No default deck/model configured",
+    });
+    return {
+      ok: false,
+      noteId: null,
+      error: "No default deck/model configured",
+      entry: patched || entry,
+    };
+  }
+  const { front, back } = buildReverseCardFields(entry);
+  await patchPending(entry.id, { status: "sending", mode: "reverse", error: null });
+  const siteTag = hostnameTag(entry.hostname);
+  const tags = siteTag
+    ? ["highlight-to-anki", "reverse", siteTag]
+    : ["highlight-to-anki", "reverse"];
+  const revTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
+  const revFields = resolveFieldNames(settings, revTargetDeck);
+  try {
+    const noteId = await ankiAddNote({
+      deckName: revTargetDeck,
+      modelName: settings.defaultModel,
+      front,
+      back,
+      tags,
+      frontField: revFields.frontField,
+      backField: revFields.backField,
+      url: ankiUrlFromSettings(settings),
+    });
+    const patched = await patchPending(entry.id, {
+      status: "sent",
+      mode: "reverse",
+      noteId,
+      error: null,
+      sentAt: new Date().toISOString(),
+    });
+    await appendHistory(patched || { ...entry, noteId, mode: "reverse" }, { mode: "reverse", noteId, deck: revTargetDeck });
+    return { ok: true, noteId, error: null, entry: patched || entry };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    const patched = await patchPending(entry.id, { status: "failed", mode: "reverse", error: msg });
+    return { ok: false, noteId: null, error: msg, entry: patched || entry };
+  }
+}
+
+/**
  * Open the edit-before-send dialog as a small popup window, scoped
  * to a single staged capture id. We use chrome.windows.create with
  * type: 'popup' so it floats free of the browser tabstrip and feels
@@ -912,11 +987,12 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const isBasic = info.menuItemId === MENU_ID;
     const isCloze = info.menuItemId === MENU_ID_CLOZE;
+    const isReverse = info.menuItemId === MENU_ID_REVERSE;
     const isImage = info.menuItemId === MENU_ID_IMAGE;
     const isBatch = info.menuItemId === MENU_ID_BATCH;
     const isEdit = info.menuItemId === MENU_ID_EDIT;
     const isShot = info.menuItemId === MENU_ID_SHOT;
-    if (!isBasic && !isCloze && !isImage && !isBatch && !isEdit && !isShot) return;
+    if (!isBasic && !isCloze && !isReverse && !isImage && !isBatch && !isEdit && !isShot) return;
     if (!tab || tab.id == null) return;
     if (isShot) {
       const result = await startScreenshotRegionFlow(tab);
@@ -978,6 +1054,19 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
         console.log(TAG, "sent cloze note", result.noteId, "→", settings.defaultDeck);
       } else {
         console.warn(TAG, "cloze send failed:", result.error);
+      }
+      return;
+    }
+    if (isReverse) {
+      if (!settings.defaultDeck || !settings.defaultModel) return;
+      const result = await sendCaptureAsReverse(entry);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: result });
+      } catch (_) { /* no popup open */ }
+      if (result.ok) {
+        console.log(TAG, "sent reverse note", result.noteId, "→", settings.defaultDeck);
+      } else {
+        console.warn(TAG, "reverse send failed:", result.error);
       }
       return;
     }
@@ -1135,6 +1224,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
       const result = await sendCaptureToAnki(entry);
+      sendResponse({ ok: result.ok, payload: result, error: result.error });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:send-capture-reverse") {
+    (async () => {
+      const id = msg.payload && msg.payload.id;
+      const store = await chrome.storage.local.get(PENDING_KEY);
+      const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+      const entry = id ? list.find((e) => e && e.id === id) : list[0];
+      if (!entry) {
+        sendResponse({ ok: false, error: "capture not found" });
+        return;
+      }
+      const result = await sendCaptureAsReverse(entry);
       sendResponse({ ok: result.ok, payload: result, error: result.error });
     })();
     return true;
