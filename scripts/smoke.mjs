@@ -11,4 +11,8 @@ const cs0 = m.content_scripts[0];
 if (!cs0.js || !cs0.js.includes("src/content.js")) { console.error("content_scripts[0].js must include src/content.js"); process.exit(1); }
 if (!cs0.matches || !cs0.matches.length) { console.error("content_scripts[0].matches required"); process.exit(1); }
 for (const sz of [16,32,48,128]) if (!fs.existsSync(`icons/icon-${sz}.png`)) { console.error("missing icon:", sz); process.exit(1); }
+if (!Array.isArray(m.permissions) || !m.permissions.includes("contextMenus")) { console.error("manifest must declare contextMenus permission"); process.exit(1); }
+const bg = fs.readFileSync("src/background.js", "utf8");
+if (!bg.includes("contextMenus.create") || !bg.includes("Send to Anki")) { console.error("background.js must register 'Send to Anki' context menu"); process.exit(1); }
+if (!bg.includes("contexts: [\"selection\"]") && !bg.includes("contexts:[\"selection\"]")) { console.error("context menu must be scoped to selection context"); process.exit(1); }
 console.log("\u2713 smoke ok");
