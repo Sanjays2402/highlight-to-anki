@@ -106,6 +106,91 @@ export function buildCardFields(capture) {
 }
 
 /**
+ * Build cloze-deletion fields from a capture. The selection is wrapped
+ * in a `{{c1::…}}` marker. When the surrounding paragraph is available
+ * and contains the selection verbatim, we splice the marker into the
+ * paragraph so the reader sees full context with one word hidden; the
+ * standalone selection is used as a fallback. The `extra` field carries
+ * the source citation, matching the standard Anki Cloze note type's
+ * "Back Extra" field.
+ *
+ * @param {{ text?: string, paragraph?: string, url?: string, title?: string, hostname?: string }} capture
+ * @returns {{ text: string, extra: string }}
+ */
+export function buildClozeFields(capture) {
+  const cap = capture || {};
+  const selection = (cap.text || "").trim();
+  const paragraph = (cap.paragraph || "").trim();
+  const url = (cap.url || "").trim();
+  const title = (cap.title || cap.hostname || url || "source").trim();
+
+  const safeSel = escapeHtml(selection).replace(/\n+/g, "<br>");
+  const cloze = `{{c1::${safeSel}}}`;
+
+  let text;
+  if (paragraph && paragraph !== selection && selection && paragraph.includes(selection)) {
+    const escPara = escapeHtml(paragraph).replace(/\n+/g, "<br>");
+    const escSel = escapeHtml(selection).replace(/\n+/g, "<br>");
+    // Only replace the first occurrence to keep the cloze single-target.
+    const idx = escPara.indexOf(escSel);
+    text = idx >= 0
+      ? escPara.slice(0, idx) + cloze + escPara.slice(idx + escSel.length)
+      : `${cloze}<br><br>${escPara}`;
+  } else if (paragraph && paragraph !== selection) {
+    text = `${cloze}<br><br>${escapeHtml(paragraph).replace(/\n+/g, "<br>")}`;
+  } else {
+    text = cloze;
+  }
+
+  const parts = [];
+  if (url) {
+    const safeUrl = escapeHtml(url);
+    const safeTitle = escapeHtml(title);
+    parts.push(`<p class="h2a-source"><a href="${safeUrl}">${safeTitle}</a></p>`);
+  } else if (title) {
+    parts.push(`<p class="h2a-source">${escapeHtml(title)}</p>`);
+  }
+  return { text, extra: parts.join("\n") };
+}
+
+/**
+ * Add a cloze-deletion note via AnkiConnect. Uses the standard Cloze
+ * note-type fields (`Text` + `Back Extra`) by default but the caller
+ * may override either. AnkiConnect rejects cloze notes that contain no
+ * `{{cN::…}}` marker, so we validate that here for a clearer error.
+ *
+ * @param {{ deckName: string, modelName: string, text: string, extra?: string, tags?: string[], allowDuplicate?: boolean, textField?: string, extraField?: string, timeoutMs?: number, url?: string }} args
+ * @returns {Promise<number>}
+ */
+export async function addClozeNote(args) {
+  if (!args || typeof args !== "object") throw new Error("addClozeNote: missing args");
+  const deckName = (args.deckName || "").trim();
+  const modelName = (args.modelName || "").trim();
+  if (!deckName) throw new Error("addClozeNote: deckName required");
+  if (!modelName) throw new Error("addClozeNote: modelName required");
+  const textField = (args.textField || "Text").trim() || "Text";
+  const extraField = (args.extraField || "Back Extra").trim() || "Back Extra";
+  const text = args.text || "";
+  if (!/\{\{c\d+::/.test(text)) {
+    throw new Error("addClozeNote: text is missing a {{cN::…}} marker");
+  }
+  const tags = Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string" && t.length) : [];
+  const params = {
+    note: {
+      deckName,
+      modelName,
+      fields: { [textField]: text, [extraField]: args.extra || "" },
+      tags,
+      options: { allowDuplicate: !!args.allowDuplicate },
+    },
+  };
+  const result = await invoke("addNote", params, { timeoutMs: args.timeoutMs, url: args.url });
+  const id = typeof result === "number" ? result : Number(result);
+  if (!Number.isFinite(id) || id <= 0) throw new Error("addClozeNote: AnkiConnect returned no note id");
+  return id;
+}
+
+/**
  * Add a basic note to Anki via AnkiConnect. Returns the created note
  * id on success. Caller decides whether to surface failure to the UI.
  *

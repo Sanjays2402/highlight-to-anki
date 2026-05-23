@@ -33,6 +33,15 @@ if (!anki.includes("deckNames") || !anki.includes("modelNames")) { console.error
 if (!anki.includes("export async function addNote") || !anki.includes("export function buildCardFields")) {
   console.error("src/anki.js must export addNote and buildCardFields"); process.exit(1);
 }
+if (!anki.includes("export function buildClozeFields") || !anki.includes("export async function addClozeNote")) {
+  console.error("src/anki.js must export buildClozeFields and addClozeNote"); process.exit(1);
+}
+if (!bg.includes("Send to Anki as Cloze")) {
+  console.error("background.js must register 'Send to Anki as Cloze' context menu"); process.exit(1);
+}
+if (!bg.includes("h2a:send-capture-cloze") || !bg.includes("sendCaptureAsCloze")) {
+  console.error("background.js must wire h2a:send-capture-cloze to sendCaptureAsCloze"); process.exit(1);
+}
 if (!bg.includes("h2a:send-capture") || !bg.includes("sendCaptureToAnki")) {
   console.error("background.js must wire h2a:send-capture to sendCaptureToAnki"); process.exit(1);
 }
@@ -52,12 +61,29 @@ if (!sample.back.includes("href=\"https://example.com/a?b=1&amp;c=2\"")) { conso
 if (escapeHtml("<x>&'\"") !== "&lt;x&gt;&amp;&#39;&quot;") { console.error("escapeHtml: incorrect output"); process.exit(1); }
 const noParagraph = buildCardFields({ text: "Solo", url: "https://e.com/", title: "E" });
 if (noParagraph.back.includes("<blockquote")) { console.error("buildCardFields: should omit blockquote when paragraph absent"); process.exit(1); }
+
+// Behavioural check: buildClozeFields wraps selection inside the paragraph.
+const { buildClozeFields } = await import("../src/anki.js");
+const cloze = buildClozeFields({
+  text: "residue of thought",
+  paragraph: "Memory is the residue of thought.",
+  url: "https://example.com/post",
+  title: "Why Don't Students Like School?",
+});
+if (!cloze.text.includes("{{c1::residue of thought}}")) { console.error("buildClozeFields: missing cloze marker"); process.exit(1); }
+if (!cloze.text.includes("Memory is the")) { console.error("buildClozeFields: should splice cloze into paragraph context"); process.exit(1); }
+if (cloze.text.split("{{c1::").length !== 2) { console.error("buildClozeFields: should only emit a single cloze marker"); process.exit(1); }
+if (!cloze.extra.includes("href=\"https://example.com/post\"")) { console.error("buildClozeFields: extra missing source link"); process.exit(1); }
+const clozeSolo = buildClozeFields({ text: "alpha & beta", url: "", title: "" });
+if (!clozeSolo.text.includes("{{c1::alpha &amp; beta}}")) { console.error("buildClozeFields: selection HTML-escape failed"); process.exit(1); }
 if (!bg.includes("h2a:list-decks") || !bg.includes("h2a:list-models")) { console.error("background.js must handle h2a:list-decks and h2a:list-models"); process.exit(1); }
 if (!bg.includes("h2a:get-settings") || !bg.includes("h2a:set-settings")) { console.error("background.js must handle h2a:get-settings and h2a:set-settings"); process.exit(1); }
 const optHtml = fs.readFileSync("src/options.html", "utf8");
 if (!optHtml.includes("deck-select") || !optHtml.includes("model-select")) { console.error("options.html must render deck-select and model-select"); process.exit(1); }
+if (!optHtml.includes("cloze-model-select")) { console.error("options.html must render cloze-model-select"); process.exit(1); }
 const optJs = fs.readFileSync("src/options.js", "utf8");
 if (!optJs.includes("h2a:list-decks") || !optJs.includes("h2a:list-models") || !optJs.includes("h2a:set-settings")) { console.error("options.js must use list-decks/list-models/set-settings messages"); process.exit(1); }
+if (!optJs.includes("clozeModel")) { console.error("options.js must persist clozeModel"); process.exit(1); }
 if (!Array.isArray(m.host_permissions) || !m.host_permissions.some((h) => h.includes("127.0.0.1:8765"))) {
   console.error("manifest host_permissions must include http://127.0.0.1:8765/*"); process.exit(1);
 }

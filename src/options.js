@@ -12,6 +12,7 @@ const els = {
   pillText: document.querySelector("#health-pill .pill-text"),
   deck: document.getElementById("deck-select"),
   model: document.getElementById("model-select"),
+  clozeModel: document.getElementById("cloze-model-select"),
   save: document.getElementById("save-btn"),
   refresh: document.getElementById("refresh-btn"),
   saveState: document.getElementById("save-state"),
@@ -20,7 +21,7 @@ const els = {
 };
 
 const state = {
-  settings: { defaultDeck: "", defaultModel: "" },
+  settings: { defaultDeck: "", defaultModel: "", clozeModel: "" },
   decks: [],
   models: [],
   dirty: false,
@@ -86,6 +87,7 @@ async function loadSettings() {
       state.settings = {
         defaultDeck: reply.payload.defaultDeck || "",
         defaultModel: reply.payload.defaultModel || "",
+        clozeModel: reply.payload.clozeModel || "",
       };
     }
   } catch (err) {
@@ -100,6 +102,7 @@ async function refresh() {
   els.card.hidden = false;
   els.deck.disabled = true;
   els.model.disabled = true;
+  if (els.clozeModel) els.clozeModel.disabled = true;
   els.save.disabled = true;
 
   let health;
@@ -115,6 +118,7 @@ async function refresh() {
     els.empty.hidden = false;
     populateSelect(els.deck, [], state.settings.defaultDeck, "Unavailable");
     populateSelect(els.model, [], state.settings.defaultModel, "Unavailable");
+    if (els.clozeModel) populateSelect(els.clozeModel, [], state.settings.clozeModel, "Unavailable");
     return;
   }
 
@@ -130,6 +134,7 @@ async function refresh() {
 
   populateSelect(els.deck, state.decks, state.settings.defaultDeck, "No decks");
   populateSelect(els.model, state.models, state.settings.defaultModel, "No note types");
+  if (els.clozeModel) populateSelect(els.clozeModel, state.models, state.settings.clozeModel, "No note types");
 
   state.dirty = false;
   els.save.disabled = true;
@@ -148,10 +153,12 @@ async function save() {
     const reply = await sendMsg("h2a:set-settings", {
       defaultDeck: els.deck.value,
       defaultModel: els.model.value,
+      clozeModel: els.clozeModel ? els.clozeModel.value : "",
     });
     if (reply && reply.ok) {
       state.settings.defaultDeck = reply.payload.defaultDeck;
       state.settings.defaultModel = reply.payload.defaultModel;
+      state.settings.clozeModel = reply.payload.clozeModel || "";
       state.dirty = false;
       setSaveState("saved", "Saved");
       setTimeout(() => setSaveState("", ""), 1800);
@@ -166,6 +173,7 @@ async function save() {
 
 els.deck.addEventListener("change", onChange);
 els.model.addEventListener("change", onChange);
+if (els.clozeModel) els.clozeModel.addEventListener("change", onChange);
 els.save.addEventListener("click", save);
 els.refresh.addEventListener("click", refresh);
 

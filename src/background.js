@@ -13,17 +13,21 @@ import {
   deckNames as ankiDeckNames,
   modelNames as ankiModelNames,
   addNote as ankiAddNote,
+  addClozeNote as ankiAddClozeNote,
   buildCardFields,
+  buildClozeFields,
 } from "./anki.js";
 
 const TAG = "[highlight-to-anki:bg]";
 const MENU_ID = "h2a-send-to-anki";
+const MENU_ID_CLOZE = "h2a-send-to-anki-cloze";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
 const SETTINGS_KEY = "h2a:settings";
 const DEFAULT_SETTINGS = Object.freeze({
   defaultDeck: "",
   defaultModel: "",
+  clozeModel: "",
   updatedAt: null,
 });
 
@@ -42,6 +46,7 @@ async function saveSettings(patch) {
   const next = {
     defaultDeck: typeof patch.defaultDeck === "string" ? patch.defaultDeck : current.defaultDeck,
     defaultModel: typeof patch.defaultModel === "string" ? patch.defaultModel : current.defaultModel,
+    clozeModel: typeof patch.clozeModel === "string" ? patch.clozeModel : current.clozeModel,
     updatedAt: new Date().toISOString(),
   };
   await area.set({ [SETTINGS_KEY]: next });
@@ -64,6 +69,17 @@ function ensureMenu() {
       () => {
         const err = chrome.runtime.lastError;
         if (err) console.warn(TAG, "menu create error:", err.message);
+      },
+    );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_CLOZE,
+        title: "Send to Anki as Cloze",
+        contexts: ["selection"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "cloze menu create error:", err.message);
       },
     );
   });
@@ -207,30 +223,95 @@ async function sendCaptureToAnki(entry) {
   }
 }
 
+/**
+ * Send a capture entry to Anki as a cloze-deletion note. Uses the
+ * configured `clozeModel` (falling back to `defaultModel`) and the
+ * configured `defaultDeck`. The card is tagged `cloze` in addition to
+ * the usual `highlight-to-anki` tag so it is easy to filter in Anki.
+ *
+ * @param {object} entry staged capture
+ * @returns {Promise<{ ok: boolean, noteId: number|null, error: string|null, entry: object }>}
+ */
+async function sendCaptureAsCloze(entry) {
+  if (!entry || !entry.text) {
+    return { ok: false, noteId: null, error: "empty capture", entry };
+  }
+  const settings = await loadSettings();
+  const modelName = settings.clozeModel || settings.defaultModel;
+  if (!settings.defaultDeck || !modelName) {
+    const patched = await patchPending(entry.id, {
+      status: "needs-config",
+      error: "No default deck or cloze note type configured",
+    });
+    return {
+      ok: false,
+      noteId: null,
+      error: "No default deck or cloze note type configured",
+      entry: patched || entry,
+    };
+  }
+  const { text, extra } = buildClozeFields(entry);
+  await patchPending(entry.id, { status: "sending", mode: "cloze", error: null });
+  try {
+    const noteId = await ankiAddClozeNote({
+      deckName: settings.defaultDeck,
+      modelName,
+      text,
+      extra,
+      tags: ["highlight-to-anki", "cloze"],
+    });
+    const patched = await patchPending(entry.id, {
+      status: "sent",
+      mode: "cloze",
+      noteId,
+      error: null,
+      sentAt: new Date().toISOString(),
+    });
+    return { ok: true, noteId, error: null, entry: patched || entry };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    const patched = await patchPending(entry.id, { status: "failed", mode: "cloze", error: msg });
+    return { ok: false, noteId: null, error: msg, entry: patched || entry };
+  }
+}
+
 if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId !== MENU_ID) return;
+    const isBasic = info.menuItemId === MENU_ID;
+    const isCloze = info.menuItemId === MENU_ID_CLOZE;
+    if (!isBasic && !isCloze) return;
     if (!tab || tab.id == null) return;
     const capture = await requestCapture(tab.id, info.selectionText);
     const entry = await stagePending(capture);
-    // Broadcast to anyone listening (popup) — ignore errors when no
-    // receiver is open.
     try {
       await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
     } catch (_) { /* no popup open */ }
     console.log(TAG, "staged capture", capture.hostname || "(unknown)", capture.text.slice(0, 60));
-    if (entry) {
-      const settings = await loadSettings();
-      if (settings.defaultDeck && settings.defaultModel) {
-        const result = await sendCaptureToAnki(entry);
-        try {
-          await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: result });
-        } catch (_) { /* no popup open */ }
-        if (result.ok) {
-          console.log(TAG, "sent note", result.noteId, "→", settings.defaultDeck);
-        } else {
-          console.warn(TAG, "send failed:", result.error);
-        }
+    if (!entry) return;
+    const settings = await loadSettings();
+    if (isCloze) {
+      const modelName = settings.clozeModel || settings.defaultModel;
+      if (!settings.defaultDeck || !modelName) return;
+      const result = await sendCaptureAsCloze(entry);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: result });
+      } catch (_) { /* no popup open */ }
+      if (result.ok) {
+        console.log(TAG, "sent cloze note", result.noteId, "→", settings.defaultDeck);
+      } else {
+        console.warn(TAG, "cloze send failed:", result.error);
+      }
+      return;
+    }
+    if (settings.defaultDeck && settings.defaultModel) {
+      const result = await sendCaptureToAnki(entry);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: result });
+      } catch (_) { /* no popup open */ }
+      if (result.ok) {
+        console.log(TAG, "sent note", result.noteId, "→", settings.defaultDeck);
+      } else {
+        console.warn(TAG, "send failed:", result.error);
       }
     }
   });
@@ -280,6 +361,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
       const result = await sendCaptureToAnki(entry);
+      sendResponse({ ok: result.ok, payload: result, error: result.error });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:send-capture-cloze") {
+    (async () => {
+      const id = msg.payload && msg.payload.id;
+      const store = await chrome.storage.local.get(PENDING_KEY);
+      const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+      const entry = id ? list.find((e) => e && e.id === id) : list[0];
+      if (!entry) {
+        sendResponse({ ok: false, error: "capture not found" });
+        return;
+      }
+      const result = await sendCaptureAsCloze(entry);
       sendResponse({ ok: result.ok, payload: result, error: result.error });
     })();
     return true;
