@@ -74,6 +74,31 @@ export function escapeHtml(s) {
 }
 
 /**
+ * Convert a hostname into an Anki-safe tag. Anki tags cannot contain
+ * whitespace and are conventionally lowercase; we also strip a leading
+ * `www.` to keep tags stable across canonical/subdomain variants. The
+ * tag is namespaced under `site:` so it groups cleanly in the browser.
+ *
+ * Returns `null` when no usable hostname is supplied so callers can
+ * skip the tag entirely (e.g. local files, `about:` pages).
+ *
+ * @param {string|undefined|null} hostname
+ * @returns {string|null}
+ */
+export function hostnameTag(hostname) {
+  if (hostname == null) return null;
+  let h = String(hostname).trim().toLowerCase();
+  if (!h) return null;
+  if (h.startsWith("www.")) h = h.slice(4);
+  // Anki disallows whitespace in tags; collapse any internal whitespace.
+  h = h.replace(/\s+/g, "");
+  // Keep only characters that are safe and meaningful in a hostname tag.
+  h = h.replace(/[^a-z0-9.\-:]/g, "");
+  if (!h) return null;
+  return `site:${h}`;
+}
+
+/**
  * Build the `{ front, back }` field payload for a basic note from a
  * capture snapshot. Front is the raw selection text; back is the
  * surrounding paragraph (when available) plus a linked citation back

@@ -16,6 +16,7 @@ import {
   addClozeNote as ankiAddClozeNote,
   buildCardFields,
   buildClozeFields,
+  hostnameTag,
 } from "./anki.js";
 
 const TAG = "[highlight-to-anki:bg]";
@@ -206,13 +207,15 @@ async function sendCaptureToAnki(entry) {
   }
   const { front, back } = buildCardFields(entry);
   await patchPending(entry.id, { status: "sending", error: null });
+  const siteTag = hostnameTag(entry.hostname);
+  const tags = siteTag ? ["highlight-to-anki", siteTag] : ["highlight-to-anki"];
   try {
     const noteId = await ankiAddNote({
       deckName: settings.defaultDeck,
       modelName: settings.defaultModel,
       front,
       back,
-      tags: ["highlight-to-anki"],
+      tags,
     });
     const patched = await patchPending(entry.id, { status: "sent", noteId, error: null, sentAt: new Date().toISOString() });
     return { ok: true, noteId, error: null, entry: patched || entry };
@@ -252,13 +255,17 @@ async function sendCaptureAsCloze(entry) {
   }
   const { text, extra } = buildClozeFields(entry);
   await patchPending(entry.id, { status: "sending", mode: "cloze", error: null });
+  const siteTag = hostnameTag(entry.hostname);
+  const tags = siteTag
+    ? ["highlight-to-anki", "cloze", siteTag]
+    : ["highlight-to-anki", "cloze"];
   try {
     const noteId = await ankiAddClozeNote({
       deckName: settings.defaultDeck,
       modelName,
       text,
       extra,
-      tags: ["highlight-to-anki", "cloze"],
+      tags,
     });
     const patched = await patchPending(entry.id, {
       status: "sent",

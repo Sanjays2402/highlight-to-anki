@@ -8,7 +8,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Default deck/model selection in options
 - [x] Card front: selection text, back: source URL + paragraph
 - [x] Cloze deletion mode (turn selection into cloze)
-- [ ] Auto-tag with hostname
+- [x] Auto-tag with hostname
 - [ ] Image capture: select image → add as front
 - [ ] Batch mode: multi-select on page, one card per selection
 - [ ] Recent cards history in popup

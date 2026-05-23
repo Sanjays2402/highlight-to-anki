@@ -87,4 +87,16 @@ if (!optJs.includes("clozeModel")) { console.error("options.js must persist cloz
 if (!Array.isArray(m.host_permissions) || !m.host_permissions.some((h) => h.includes("127.0.0.1:8765"))) {
   console.error("manifest host_permissions must include http://127.0.0.1:8765/*"); process.exit(1);
 }
+if (!anki.includes("export function hostnameTag")) {
+  console.error("src/anki.js must export hostnameTag"); process.exit(1);
+}
+if (!bg.includes("hostnameTag")) {
+  console.error("background.js must import hostnameTag to auto-tag captures"); process.exit(1);
+}
+const { hostnameTag } = await import("../src/anki.js");
+if (hostnameTag("www.Example.COM") !== "site:example.com") { console.error("hostnameTag: should strip www. and lowercase"); process.exit(1); }
+if (hostnameTag("news.ycombinator.com") !== "site:news.ycombinator.com") { console.error("hostnameTag: should preserve subdomain"); process.exit(1); }
+if (hostnameTag("") !== null || hostnameTag(null) !== null || hostnameTag(undefined) !== null) { console.error("hostnameTag: empty inputs should return null"); process.exit(1); }
+if (hostnameTag("bad host name") !== "site:badhostname") { console.error("hostnameTag: should strip whitespace"); process.exit(1); }
+
 console.log("\u2713 smoke ok");
