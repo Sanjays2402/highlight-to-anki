@@ -34,15 +34,20 @@ const els = {
   siteRulesEmpty: document.getElementById("site-rules-empty"),
   siteRulesSaveState: document.getElementById("site-rules-save-state"),
   addSiteRule: document.getElementById("add-site-rule-btn"),
+  deckStylesList: document.getElementById("deck-styles-list"),
+  deckStylesEmpty: document.getElementById("deck-styles-empty"),
+  deckStylesSaveState: document.getElementById("deck-styles-save-state"),
+  addDeckStyle: document.getElementById("add-deck-style-btn"),
 };
 
 const state = {
-  settings: { defaultDeck: "", defaultModel: "", clozeModel: "", fieldTemplates: {}, siteRules: [], ankiHost: "127.0.0.1", ankiPort: 8765 },
+  settings: { defaultDeck: "", defaultModel: "", clozeModel: "", fieldTemplates: {}, deckStyles: {}, siteRules: [], ankiHost: "127.0.0.1", ankiPort: 8765 },
   decks: [],
   models: [],
   dirty: false,
   templates: [],
   siteRules: [],
+  deckStyles: [],
 };
 
 function setPill(stateName, label) {
@@ -109,6 +114,9 @@ async function loadSettings() {
         fieldTemplates: reply.payload.fieldTemplates && typeof reply.payload.fieldTemplates === "object"
           ? reply.payload.fieldTemplates
           : {},
+        deckStyles: reply.payload.deckStyles && typeof reply.payload.deckStyles === "object"
+          ? reply.payload.deckStyles
+          : {},
         siteRules: Array.isArray(reply.payload.siteRules) ? reply.payload.siteRules : [],
         ankiHost: reply.payload.ankiHost || "127.0.0.1",
         ankiPort: Number.isFinite(reply.payload.ankiPort) ? reply.payload.ankiPort : 8765,
@@ -123,6 +131,10 @@ async function loadSettings() {
       state.siteRules = state.settings.siteRules.map((r) => ({
         hostname: (r && r.hostname) || "",
         deck: (r && r.deck) || "",
+      }));
+      state.deckStyles = Object.entries(state.settings.deckStyles).map(([deck, css]) => ({
+        deck,
+        css: typeof css === "string" ? css : "",
       }));
     }
   } catch (err) {
@@ -172,6 +184,7 @@ async function refresh() {
   if (els.clozeModel) populateSelect(els.clozeModel, state.models, state.settings.clozeModel, "No note types");
   renderTemplates();
   renderSiteRules();
+  renderDeckStyles();
 
   state.dirty = false;
   els.save.disabled = true;
@@ -193,6 +206,7 @@ async function save() {
       clozeModel: els.clozeModel ? els.clozeModel.value : "",
       fieldTemplates: templatesToMap(),
       siteRules: siteRulesToList(),
+      deckStyles: deckStylesToMap(),
       ankiHost: els.ankiHost ? els.ankiHost.value : undefined,
       ankiPort: els.ankiPort ? els.ankiPort.value : undefined,
     });
@@ -202,6 +216,7 @@ async function save() {
       state.settings.clozeModel = reply.payload.clozeModel || "";
       state.settings.fieldTemplates = reply.payload.fieldTemplates || {};
       state.settings.siteRules = Array.isArray(reply.payload.siteRules) ? reply.payload.siteRules : [];
+      state.settings.deckStyles = reply.payload.deckStyles || {};
       state.settings.ankiHost = reply.payload.ankiHost || "127.0.0.1";
       state.settings.ankiPort = Number.isFinite(reply.payload.ankiPort) ? reply.payload.ankiPort : 8765;
       if (els.ankiHost) els.ankiHost.value = state.settings.ankiHost;
@@ -236,6 +251,7 @@ if (els.testConnection) els.testConnection.addEventListener("click", testConnect
 if (els.resetConnection) els.resetConnection.addEventListener("click", resetConnection);
 if (els.addTemplate) els.addTemplate.addEventListener("click", addTemplate);
 if (els.addSiteRule) els.addSiteRule.addEventListener("click", addSiteRule);
+if (els.addDeckStyle) els.addDeckStyle.addEventListener("click", addDeckStyle);
 
 function normaliseHostInput(raw) {
   let h = String(raw == null ? "" : raw).trim();
@@ -582,6 +598,145 @@ function addSiteRule() {
   }
   onChange();
   setSiteRulesSaveState("", "Unsaved changes");
+}
+
+// ---------------------------------------------------------------------------
+// Per-deck custom CSS
+// ---------------------------------------------------------------------------
+
+function deckStylesToMap() {
+  const out = {};
+  for (const row of state.deckStyles) {
+    const deck = (row.deck || "").trim();
+    const css = (row.css || "").replace(/^\s+|\s+$/g, "");
+    if (!deck || !css) continue;
+    out[deck] = css;
+  }
+  return out;
+}
+
+function setDeckStylesSaveState(stateName, text) {
+  if (!els.deckStylesSaveState) return;
+  els.deckStylesSaveState.dataset.state = stateName || "";
+  els.deckStylesSaveState.textContent = text || "";
+}
+
+function renderDeckStyles() {
+  if (!els.deckStylesList) return;
+  els.deckStylesList.innerHTML = "";
+  if (!state.deckStyles.length) {
+    if (els.deckStylesEmpty) els.deckStylesEmpty.hidden = false;
+    return;
+  }
+  if (els.deckStylesEmpty) els.deckStylesEmpty.hidden = true;
+
+  const decks = state.decks.slice();
+  state.deckStyles.forEach((entry, idx) => {
+    const row = document.createElement("div");
+    row.className = "deck-style-row";
+    row.dataset.idx = String(idx);
+
+    const head = document.createElement("div");
+    head.className = "deck-style-row-head";
+    const deckWrap = document.createElement("div");
+    deckWrap.className = "select-wrap deck-style-deck-wrap";
+    deckWrap.innerHTML = `
+      <svg class="select-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6h16M4 12h16M4 18h10"/>
+      </svg>
+      <svg class="chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    `;
+    const deckSel = document.createElement("select");
+    deckSel.dataset.idx = String(idx);
+    deckSel.dataset.key = "deck";
+    deckSel.setAttribute("aria-label", "Deck");
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "— Select a deck —";
+    deckSel.appendChild(blank);
+    let matched = !entry.deck;
+    for (const name of decks) {
+      const o = document.createElement("option");
+      o.value = name;
+      o.textContent = name;
+      if (name === entry.deck) { o.selected = true; matched = true; }
+      deckSel.appendChild(o);
+    }
+    if (!matched && entry.deck) {
+      const o = document.createElement("option");
+      o.value = entry.deck;
+      o.textContent = `${entry.deck} (missing)`;
+      o.selected = true;
+      deckSel.appendChild(o);
+    }
+    deckSel.addEventListener("change", onDeckStyleChange);
+    deckWrap.appendChild(deckSel);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "deck-style-remove";
+    remove.dataset.idx = String(idx);
+    remove.setAttribute("aria-label", "Remove deck style");
+    remove.title = "Remove deck style";
+    remove.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 7V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v2M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/></svg>`;
+    remove.addEventListener("click", onDeckStyleRemove);
+    head.appendChild(deckWrap);
+    head.appendChild(remove);
+    row.appendChild(head);
+
+    const cssField = document.createElement("div");
+    cssField.className = "field deck-style-field";
+    const lbl = document.createElement("label");
+    lbl.textContent = "CSS";
+    lbl.htmlFor = `deck-style-${idx}-css`;
+    const ta = document.createElement("textarea");
+    ta.id = lbl.htmlFor;
+    ta.className = "deck-style-input";
+    ta.spellcheck = false;
+    ta.autocomplete = "off";
+    ta.rows = 6;
+    ta.placeholder = ".h2a-source a { color: #6366f1; }";
+    ta.value = entry.css || "";
+    ta.dataset.idx = String(idx);
+    ta.dataset.key = "css";
+    ta.addEventListener("input", onDeckStyleChange);
+    cssField.appendChild(lbl);
+    cssField.appendChild(ta);
+    row.appendChild(cssField);
+
+    els.deckStylesList.appendChild(row);
+  });
+}
+
+function onDeckStyleChange(ev) {
+  const idx = Number(ev.currentTarget.dataset.idx);
+  const key = ev.currentTarget.dataset.key;
+  if (!Number.isFinite(idx) || !state.deckStyles[idx] || !key) return;
+  state.deckStyles[idx][key] = ev.currentTarget.value;
+  onChange();
+  setDeckStylesSaveState("", "Unsaved changes");
+}
+
+function onDeckStyleRemove(ev) {
+  const idx = Number(ev.currentTarget.dataset.idx);
+  if (!Number.isFinite(idx)) return;
+  state.deckStyles.splice(idx, 1);
+  renderDeckStyles();
+  onChange();
+  setDeckStylesSaveState("", "Unsaved changes");
+}
+
+function addDeckStyle() {
+  state.deckStyles.push({ deck: "", css: "" });
+  renderDeckStyles();
+  const rows = els.deckStylesList.querySelectorAll(".deck-style-row");
+  const last = rows[rows.length - 1];
+  if (last) {
+    const sel = last.querySelector("select");
+    if (sel) sel.focus();
+  }
+  onChange();
+  setDeckStylesSaveState("", "Unsaved changes");
 }
 
 

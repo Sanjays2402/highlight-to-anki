@@ -362,6 +362,64 @@ export function resolveFieldNames(settings, deckName) {
 }
 
 /**
+ * Resolve the user-configured CSS for a given deck, if any. Returns
+ * an empty string when no override exists so callers can short-circuit
+ * cheaply. Whitespace-only entries are treated as empty.
+ *
+ * @param {{ deckStyles?: Record<string, string> }|undefined|null} settings
+ * @param {string|undefined|null} deckName
+ * @returns {string}
+ */
+export function resolveDeckCss(settings, deckName) {
+  if (!settings || !settings.deckStyles || !deckName) return "";
+  const raw = settings.deckStyles[deckName];
+  if (typeof raw !== "string") return "";
+  const trimmed = raw.trim();
+  return trimmed;
+}
+
+/**
+ * Build an inline `<style>` block carrying user-supplied CSS for a
+ * single card. Anki renders fields as HTML and honours embedded
+ * `<style>` tags at display time, which gives us per-deck styling
+ * without needing to call AnkiConnect's `updateModelStyling` (which
+ * is model-scoped, not deck-scoped, and would clobber other users of
+ * the same note type).
+ *
+ * The CSS is HTML-escaped defensively and any `</style>` sequence is
+ * neutralised so a misbehaving rule cannot break out of the block.
+ * Returns `""` when no CSS is supplied so callers can concatenate the
+ * result unconditionally.
+ *
+ * @param {string|undefined|null} css
+ * @returns {string}
+ */
+export function buildStyleBlock(css) {
+  if (css == null) return "";
+  const raw = String(css).trim();
+  if (!raw) return "";
+  // Defang `</style>` (case-insensitive). Anki's renderer is lenient
+  // but a stray closer would terminate the block early and leak the
+  // remainder as visible text on the card.
+  const safe = raw.replace(/<\s*\/\s*style\s*>/gi, "&lt;/style&gt;");
+  return `<style class="h2a-deck-css">${safe}</style>`;
+}
+
+/**
+ * Prepend a `<style>` block carrying `css` to an HTML field payload.
+ * No-ops when `css` is empty so existing callers stay clean.
+ *
+ * @param {string} html
+ * @param {string|undefined|null} css
+ * @returns {string}
+ */
+export function applyDeckStyles(html, css) {
+  const block = buildStyleBlock(css);
+  if (!block) return html == null ? "" : String(html);
+  return `${block}${html == null ? "" : String(html)}`;
+}
+
+/**
  * Normalise a hostname for site-rule matching: lowercase, trimmed,
  * with a leading `www.` stripped so subdomain canonicals collapse to
  * the apex variant. Returns an empty string when nothing usable is

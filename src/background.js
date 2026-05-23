@@ -25,6 +25,8 @@ import {
   detectLanguage,
   languageTag,
   resolveFieldNames,
+  resolveDeckCss,
+  applyDeckStyles,
   resolveSiteDeck,
   buildAnkiConnectUrl,
   normaliseAnkiHost,
@@ -53,6 +55,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   defaultModel: "",
   clozeModel: "",
   fieldTemplates: {},
+  deckStyles: {},
   siteRules: [],
   theme: "auto",
   ankiHost: DEFAULT_ANKI_HOST,
@@ -114,6 +117,31 @@ function sanitiseTemplates(raw) {
 }
 
 /**
+ * Sanitise the per-deck custom CSS map. Keys are deck names; values
+ * are raw CSS strings that get embedded into every card front via a
+ * scoped `<style>` block at send time. Empty / whitespace entries are
+ * dropped so the persisted blob stays compact. Per-deck CSS is
+ * capped at 8 KB so a runaway paste can't bloat chrome.storage.sync.
+ *
+ * @param {unknown} raw
+ * @returns {Record<string, string>}
+ */
+function sanitiseDeckStyles(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const out = {};
+  const MAX = 8 * 1024;
+  for (const [deck, css] of Object.entries(raw)) {
+    const deckName = typeof deck === "string" ? deck.trim() : "";
+    if (!deckName) continue;
+    const value = typeof css === "string" ? css : "";
+    const trimmed = value.replace(/^\s+|\s+$/g, "");
+    if (!trimmed) continue;
+    out[deckName] = trimmed.length > MAX ? trimmed.slice(0, MAX) : trimmed;
+  }
+  return out;
+}
+
+/**
  * Append a successful send to the recent history ring buffer. Stored in
  * chrome.storage.local so it persists across popup opens but never leaves
  * the device. Bounded at {@link HISTORY_LIMIT} most-recent items.
@@ -165,6 +193,9 @@ async function saveSettings(patch) {
     fieldTemplates: patch.fieldTemplates !== undefined
       ? sanitiseTemplates(patch.fieldTemplates)
       : (current.fieldTemplates || {}),
+    deckStyles: patch.deckStyles !== undefined
+      ? sanitiseDeckStyles(patch.deckStyles)
+      : sanitiseDeckStyles(current.deckStyles || {}),
     siteRules: patch.siteRules !== undefined
       ? sanitiseSiteRules(patch.siteRules)
       : (Array.isArray(current.siteRules) ? current.siteRules : []),
@@ -345,10 +376,11 @@ async function sendBatch() {
     const batchDeck = resolveSiteDeck(siteRules, entry.hostname) || settings.defaultDeck;
     try {
       const batchFields = resolveFieldNames(settings, batchDeck);
+      const batchDeckCss = resolveDeckCss(settings, batchDeck);
       const noteId = await ankiAddNote({
         deckName: batchDeck,
         modelName: settings.defaultModel,
-        front,
+        front: applyDeckStyles(front, batchDeckCss),
         back,
         tags,
         frontField: batchFields.frontField,
@@ -565,11 +597,12 @@ async function sendCaptureToAnki(entry) {
   if (langTag) tags.push(langTag);
   const targetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const fields = resolveFieldNames(settings, targetDeck);
+  const deckCss = resolveDeckCss(settings, targetDeck);
   try {
     const noteId = await ankiAddNote({
       deckName: targetDeck,
       modelName: settings.defaultModel,
-      front,
+      front: applyDeckStyles(front, deckCss),
       back,
       tags,
       frontField: fields.frontField,
@@ -621,12 +654,13 @@ async function sendCaptureAsImage(entry) {
   if (siteTag) tags.push(siteTag);
   const imgTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const imgFields = resolveFieldNames(settings, imgTargetDeck);
+  const imgDeckCss = resolveDeckCss(settings, imgTargetDeck);
   try {
     const noteId = await ankiAddImageNote({
       deckName: imgTargetDeck,
       modelName: settings.defaultModel,
       imageUrl: entry.imageUrl,
-      back,
+      back: applyDeckStyles(back, imgDeckCss),
       tags,
       frontField: imgFields.frontField,
       backField: imgFields.backField,
@@ -684,11 +718,12 @@ async function sendCaptureAsCloze(entry) {
   if (langTag) tags.push(langTag);
   const clozeTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const clozeFields = resolveFieldNames(settings, clozeTargetDeck);
+  const clozeDeckCss = resolveDeckCss(settings, clozeTargetDeck);
   try {
     const noteId = await ankiAddClozeNote({
       deckName: clozeTargetDeck,
       modelName,
-      text,
+      text: applyDeckStyles(text, clozeDeckCss),
       extra,
       tags,
       textField: clozeFields.textField,
@@ -747,11 +782,12 @@ async function sendCaptureAsReverse(entry) {
   if (langTag) tags.push(langTag);
   const revTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const revFields = resolveFieldNames(settings, revTargetDeck);
+  const revDeckCss = resolveDeckCss(settings, revTargetDeck);
   try {
     const noteId = await ankiAddNote({
       deckName: revTargetDeck,
       modelName: settings.defaultModel,
-      front,
+      front: applyDeckStyles(front, revDeckCss),
       back,
       tags,
       frontField: revFields.frontField,
@@ -837,13 +873,14 @@ async function sendEditedCapture(edits) {
   await patchPending(entry.id, { status: "sending", mode, error: null });
   const settings = await loadSettings();
   const editFields = resolveFieldNames(settings, deckName);
+  const editDeckCss = resolveDeckCss(settings, deckName);
   try {
     let noteId;
     if (mode === "cloze") {
       noteId = await ankiAddClozeNote({
         deckName,
         modelName,
-        text: edits.text || "",
+        text: applyDeckStyles(edits.text || "", editDeckCss),
         extra: edits.extra || "",
         tags: baseTags,
         textField: editFields.textField,
@@ -854,7 +891,7 @@ async function sendEditedCapture(edits) {
       noteId = await ankiAddNote({
         deckName,
         modelName,
-        front: edits.front || "",
+        front: applyDeckStyles(edits.front || "", editDeckCss),
         back: edits.back || "",
         tags: baseTags,
         frontField: editFields.frontField,

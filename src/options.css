@@ -332,3 +332,54 @@ body[data-theme="light"] .glass {
 /* Small button variant — used by the "Replay tutorial" footer action. */
 .btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 9px; }
 #appearance-card .card-foot { margin-top: 12px; }
+
+/* Per-deck custom CSS editor. Mirrors the templates list aesthetic
+   so the two panels feel like siblings. */
+.deck-styles-list { display: flex; flex-direction: column; gap: 12px; }
+.deck-style-row {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  transition: border-color 200ms var(--ease), background 200ms var(--ease);
+}
+.deck-style-row:hover { border-color: var(--line-strong); }
+.deck-style-row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.deck-style-deck-wrap { flex: 1; }
+.deck-style-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--line-strong);
+  background: var(--glass-strong);
+  color: var(--fg-soft);
+  cursor: pointer;
+  transition: color 180ms var(--ease), background 180ms var(--ease), border-color 180ms var(--ease);
+}
+.deck-style-remove:hover { color: rgb(var(--bad)); border-color: rgb(var(--bad) / 0.4); background: rgb(var(--bad) / 0.08); }
+.deck-style-remove:focus-visible { outline: 2px solid rgb(var(--accent) / 0.6); outline-offset: 2px; }
+.deck-style-field { gap: 4px; }
+.deck-style-field label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-soft); font-weight: 600; }
+.deck-style-input {
+  font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--glass-strong);
+  outline: none;
+  resize: vertical;
+  min-height: 96px;
+  transition: border-color 200ms var(--ease), box-shadow 200ms var(--ease);
+}
+.deck-style-input::placeholder { color: var(--fg-soft); }
+.deck-style-input:hover { border-color: rgb(var(--accent) / 0.5); }
+.deck-style-input:focus { border-color: rgb(var(--accent) / 0.7); box-shadow: 0 0 0 3px rgb(var(--accent) / 0.18); }
+.deck-styles-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 20px 8px 4px; text-align: center; color: var(--fg-soft);
+}
+.deck-styles-empty svg { color: rgb(var(--accent)); opacity: 0.7; }
+.deck-styles-empty p { margin: 0; font-size: 12px; max-width: 280px; }
