@@ -252,4 +252,22 @@ if (resolveTheme("light", false) !== "light" || resolveTheme("light", true) !== 
 if (resolveTheme("auto", true) !== "light" || resolveTheme("auto", false) !== "dark") { console.error("resolveTheme: 'auto' must follow media query"); process.exit(1); }
 if (coercePreference("bogus") !== "auto" || coercePreference("dark") !== "dark") { console.error("coercePreference: invalid input should fall back to 'auto'"); process.exit(1); }
 
+// Keyboard shortcut: send selection without context menu.
+if (!m.commands || !m.commands["send-selection"]) {
+  console.error("manifest must declare a 'send-selection' command"); process.exit(1);
+}
+const cmd = m.commands["send-selection"];
+if (!cmd.suggested_key || !cmd.suggested_key.default || !cmd.suggested_key.mac) {
+  console.error("manifest send-selection command must include default + mac suggested_key"); process.exit(1);
+}
+if (!cmd.description) {
+  console.error("manifest send-selection command must include a description"); process.exit(1);
+}
+if (!bg.includes("chrome.commands.onCommand") || !bg.includes("send-selection")) {
+  console.error("background.js must wire chrome.commands.onCommand to 'send-selection'"); process.exit(1);
+}
+if (!bg.includes("handleSendSelectionCommand")) {
+  console.error("background.js must define handleSendSelectionCommand"); process.exit(1);
+}
+
 console.log("\u2713 smoke ok");

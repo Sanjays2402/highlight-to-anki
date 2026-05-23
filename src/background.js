@@ -769,6 +769,62 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   });
 }
 
+/**
+ * Handle the `send-selection` keyboard shortcut. Mirrors the basic
+ * "Send to Anki" context-menu flow but skips the right-click step:
+ * we grab the active tab's selection, stage it, broadcast for any
+ * open popup, and (when a default deck/model is configured) send the
+ * card straight to Anki. Wired to the `commands` manifest key — no
+ * extra permissions required beyond `activeTab` + `scripting` which
+ * are already declared.
+ *
+ * @param {string} command command id from chrome.commands.onCommand
+ */
+async function handleSendSelectionCommand(command) {
+  if (command !== "send-selection") return;
+  let tab;
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    tab = activeTab;
+  } catch (err) {
+    console.warn(TAG, "shortcut: tabs.query failed:", err && err.message);
+    return;
+  }
+  if (!tab || tab.id == null) return;
+  const capture = await requestCapture(tab.id);
+  if (!capture || (!capture.text && !capture.imageUrl)) {
+    console.log(TAG, "shortcut: no selection on active tab");
+    return;
+  }
+  const entry = await stagePending(capture);
+  try {
+    await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
+  } catch (_) { /* no popup open */ }
+  if (!entry) return;
+  const settings = await loadSettings();
+  if (!settings.defaultDeck || !settings.defaultModel) {
+    console.log(TAG, "shortcut: capture staged; needs default deck/model");
+    return;
+  }
+  const result = await sendCaptureToAnki(entry);
+  try {
+    await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: result });
+  } catch (_) { /* no popup open */ }
+  if (result.ok) {
+    console.log(TAG, "shortcut: sent note", result.noteId, "→", settings.defaultDeck);
+  } else {
+    console.warn(TAG, "shortcut: send failed:", result.error);
+  }
+}
+
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener((command) => {
+    handleSendSelectionCommand(command).catch((err) => {
+      console.warn(TAG, "shortcut handler error:", err && err.message);
+    });
+  });
+}
+
 // Lightweight message router for the popup / options UIs.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || typeof msg !== "object") return false;

@@ -17,7 +17,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Sync status indicator
 - [x] Liquid-glass popup UI
 - [x] Dark/light theme
-- [ ] Keyboard shortcut to send selection without context menu
+- [x] Keyboard shortcut to send selection without context menu
 - [ ] Duplicate detection: warn if selection already a card
 - [ ] Card preview rendering in popup before send
 - [ ] Per-site default deck rules

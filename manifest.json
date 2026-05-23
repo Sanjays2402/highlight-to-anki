@@ -23,6 +23,15 @@
       "128": "icons/icon-128.png"
     }
   },
+  "commands": {
+    "send-selection": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Send current selection to Anki"
+    }
+  },
   "options_ui": {
     "page": "src/options.html",
     "open_in_tab": true
