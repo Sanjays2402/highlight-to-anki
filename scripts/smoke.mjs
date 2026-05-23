@@ -30,6 +30,28 @@ const popupJs = fs.readFileSync("src/popup.js", "utf8");
 if (!popupJs.includes("h2a:anki-health")) { console.error("popup.js must request AnkiConnect health from the service worker"); process.exit(1); }
 if (!m.options_ui || m.options_ui.page !== "src/options.html") { console.error("manifest must declare options_ui.page = src/options.html"); process.exit(1); }
 if (!anki.includes("deckNames") || !anki.includes("modelNames")) { console.error("src/anki.js must export deckNames and modelNames"); process.exit(1); }
+if (!anki.includes("export async function addNote") || !anki.includes("export function buildCardFields")) {
+  console.error("src/anki.js must export addNote and buildCardFields"); process.exit(1);
+}
+if (!bg.includes("h2a:send-capture") || !bg.includes("sendCaptureToAnki")) {
+  console.error("background.js must wire h2a:send-capture to sendCaptureToAnki"); process.exit(1);
+}
+
+// Behavioural check: buildCardFields produces a citation link on the back.
+const { buildCardFields, escapeHtml } = await import("../src/anki.js");
+const sample = buildCardFields({
+  text: "Memory is the residue of thought.",
+  paragraph: "Memory is the residue of thought. Students remember what they think about.",
+  url: "https://example.com/a?b=1&c=2",
+  title: "Why Don't Students Like School?",
+  hostname: "example.com",
+});
+if (!sample.front.includes("Memory is the residue of thought.")) { console.error("buildCardFields: front missing selection text"); process.exit(1); }
+if (!sample.back.includes("<blockquote") || !sample.back.includes("Students remember")) { console.error("buildCardFields: back missing context blockquote"); process.exit(1); }
+if (!sample.back.includes("href=\"https://example.com/a?b=1&amp;c=2\"")) { console.error("buildCardFields: back missing escaped source link"); process.exit(1); }
+if (escapeHtml("<x>&'\"") !== "&lt;x&gt;&amp;&#39;&quot;") { console.error("escapeHtml: incorrect output"); process.exit(1); }
+const noParagraph = buildCardFields({ text: "Solo", url: "https://e.com/", title: "E" });
+if (noParagraph.back.includes("<blockquote")) { console.error("buildCardFields: should omit blockquote when paragraph absent"); process.exit(1); }
 if (!bg.includes("h2a:list-decks") || !bg.includes("h2a:list-models")) { console.error("background.js must handle h2a:list-decks and h2a:list-models"); process.exit(1); }
 if (!bg.includes("h2a:get-settings") || !bg.includes("h2a:set-settings")) { console.error("background.js must handle h2a:get-settings and h2a:set-settings"); process.exit(1); }
 const optHtml = fs.readFileSync("src/options.html", "utf8");

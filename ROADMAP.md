@@ -6,7 +6,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Context menu: 'Send to Anki' on selection
 - [x] AnkiConnect health check + version display
 - [x] Default deck/model selection in options
-- [ ] Card front: selection text, back: source URL + paragraph
+- [x] Card front: selection text, back: source URL + paragraph
 - [ ] Cloze deletion mode (turn selection into cloze)
 - [ ] Auto-tag with hostname
 - [ ] Image capture: select image → add as front

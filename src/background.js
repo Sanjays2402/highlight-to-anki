@@ -12,6 +12,8 @@ import {
   healthCheck as ankiHealthCheck,
   deckNames as ankiDeckNames,
   modelNames as ankiModelNames,
+  addNote as ankiAddNote,
+  buildCardFields,
 } from "./anki.js";
 
 const TAG = "[highlight-to-anki:bg]";
@@ -140,12 +142,69 @@ async function requestCapture(tabId, fallbackText) {
 
 /** Persist a capture to a bounded ring buffer in chrome.storage.local. */
 async function stagePending(capture) {
-  if (!capture || !capture.text) return;
+  if (!capture || !capture.text) return null;
   const store = await chrome.storage.local.get(PENDING_KEY);
   const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
-  list.unshift({ ...capture, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
+  const entry = {
+    ...capture,
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    status: "staged",
+    noteId: null,
+    error: null,
+  };
+  list.unshift(entry);
   if (list.length > PENDING_LIMIT) list.length = PENDING_LIMIT;
   await chrome.storage.local.set({ [PENDING_KEY]: list });
+  return entry;
+}
+
+/** Patch a staged capture in place by id. */
+async function patchPending(id, patch) {
+  if (!id) return null;
+  const store = await chrome.storage.local.get(PENDING_KEY);
+  const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+  const idx = list.findIndex((entry) => entry && entry.id === id);
+  if (idx < 0) return null;
+  list[idx] = { ...list[idx], ...patch };
+  await chrome.storage.local.set({ [PENDING_KEY]: list });
+  return list[idx];
+}
+
+/**
+ * Send a capture entry to Anki as a basic note. Honours the configured
+ * default deck/model; returns the AnkiConnect note id on success and
+ * records the outcome back onto the staged entry so the popup history
+ * can surface it later.
+ *
+ * @param {object} entry staged capture
+ * @returns {Promise<{ ok: boolean, noteId: number|null, error: string|null, entry: object }>}
+ */
+async function sendCaptureToAnki(entry) {
+  if (!entry || !entry.text) {
+    return { ok: false, noteId: null, error: "empty capture", entry };
+  }
+  const settings = await loadSettings();
+  if (!settings.defaultDeck || !settings.defaultModel) {
+    const patched = await patchPending(entry.id, { status: "needs-config", error: "No default deck/model configured" });
+    return { ok: false, noteId: null, error: "No default deck/model configured", entry: patched || entry };
+  }
+  const { front, back } = buildCardFields(entry);
+  await patchPending(entry.id, { status: "sending", error: null });
+  try {
+    const noteId = await ankiAddNote({
+      deckName: settings.defaultDeck,
+      modelName: settings.defaultModel,
+      front,
+      back,
+      tags: ["highlight-to-anki"],
+    });
+    const patched = await patchPending(entry.id, { status: "sent", noteId, error: null, sentAt: new Date().toISOString() });
+    return { ok: true, noteId, error: null, entry: patched || entry };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    const patched = await patchPending(entry.id, { status: "failed", error: msg });
+    return { ok: false, noteId: null, error: msg, entry: patched || entry };
+  }
 }
 
 if (chrome.contextMenus && chrome.contextMenus.onClicked) {
@@ -153,13 +212,27 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     if (info.menuItemId !== MENU_ID) return;
     if (!tab || tab.id == null) return;
     const capture = await requestCapture(tab.id, info.selectionText);
-    await stagePending(capture);
+    const entry = await stagePending(capture);
     // Broadcast to anyone listening (popup) — ignore errors when no
     // receiver is open.
     try {
-      await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: capture });
+      await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
     } catch (_) { /* no popup open */ }
     console.log(TAG, "staged capture", capture.hostname || "(unknown)", capture.text.slice(0, 60));
+    if (entry) {
+      const settings = await loadSettings();
+      if (settings.defaultDeck && settings.defaultModel) {
+        const result = await sendCaptureToAnki(entry);
+        try {
+          await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: result });
+        } catch (_) { /* no popup open */ }
+        if (result.ok) {
+          console.log(TAG, "sent note", result.noteId, "→", settings.defaultDeck);
+        } else {
+          console.warn(TAG, "send failed:", result.error);
+        }
+      }
+    }
   });
 }
 
@@ -194,6 +267,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "h2a:get-settings") {
     loadSettings().then((settings) => sendResponse({ ok: true, payload: settings }));
+    return true;
+  }
+  if (msg.type === "h2a:send-capture") {
+    (async () => {
+      const id = msg.payload && msg.payload.id;
+      const store = await chrome.storage.local.get(PENDING_KEY);
+      const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+      const entry = id ? list.find((e) => e && e.id === id) : list[0];
+      if (!entry) {
+        sendResponse({ ok: false, error: "capture not found" });
+        return;
+      }
+      const result = await sendCaptureToAnki(entry);
+      sendResponse({ ok: result.ok, payload: result, error: result.error });
+    })();
     return true;
   }
   if (msg.type === "h2a:set-settings") {

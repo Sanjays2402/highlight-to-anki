@@ -58,6 +58,85 @@ export async function invoke(action, params = {}, opts = {}) {
 }
 
 /**
+ * Escape a string for safe inclusion as HTML text content. Anki notes
+ * store fields as HTML, so any selection coming from the page must be
+ * neutralised before being interpolated into a field template.
+ * @param {string} s
+ * @returns {string}
+ */
+export function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Build the `{ front, back }` field payload for a basic note from a
+ * capture snapshot. Front is the raw selection text; back is the
+ * surrounding paragraph (when available) plus a linked citation back
+ * to the source page. Both sides are HTML-safe.
+ *
+ * @param {{ text?: string, paragraph?: string, url?: string, title?: string, hostname?: string }} capture
+ * @returns {{ front: string, back: string }}
+ */
+export function buildCardFields(capture) {
+  const cap = capture || {};
+  const text = (cap.text || "").trim();
+  const paragraph = (cap.paragraph || "").trim();
+  const url = (cap.url || "").trim();
+  const title = (cap.title || cap.hostname || url || "source").trim();
+
+  const front = escapeHtml(text).replace(/\n+/g, "<br>");
+
+  const parts = [];
+  if (paragraph && paragraph !== text) {
+    parts.push(`<blockquote class="h2a-context">${escapeHtml(paragraph).replace(/\n+/g, "<br>")}</blockquote>`);
+  }
+  if (url) {
+    const safeUrl = escapeHtml(url);
+    const safeTitle = escapeHtml(title);
+    parts.push(`<p class="h2a-source"><a href="${safeUrl}">${safeTitle}</a></p>`);
+  } else if (title) {
+    parts.push(`<p class="h2a-source">${escapeHtml(title)}</p>`);
+  }
+  return { front, back: parts.join("\n") };
+}
+
+/**
+ * Add a basic note to Anki via AnkiConnect. Returns the created note
+ * id on success. Caller decides whether to surface failure to the UI.
+ *
+ * @param {{ deckName: string, modelName: string, front: string, back: string, tags?: string[], allowDuplicate?: boolean, frontField?: string, backField?: string, timeoutMs?: number, url?: string }} args
+ * @returns {Promise<number>}
+ */
+export async function addNote(args) {
+  if (!args || typeof args !== "object") throw new Error("addNote: missing args");
+  const deckName = (args.deckName || "").trim();
+  const modelName = (args.modelName || "").trim();
+  if (!deckName) throw new Error("addNote: deckName required");
+  if (!modelName) throw new Error("addNote: modelName required");
+  const frontField = (args.frontField || "Front").trim() || "Front";
+  const backField = (args.backField || "Back").trim() || "Back";
+  const tags = Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string" && t.length) : [];
+  const params = {
+    note: {
+      deckName,
+      modelName,
+      fields: { [frontField]: args.front || "", [backField]: args.back || "" },
+      tags,
+      options: { allowDuplicate: !!args.allowDuplicate },
+    },
+  };
+  const result = await invoke("addNote", params, { timeoutMs: args.timeoutMs, url: args.url });
+  const id = typeof result === "number" ? result : Number(result);
+  if (!Number.isFinite(id) || id <= 0) throw new Error("addNote: AnkiConnect returned no note id");
+  return id;
+}
+
+/**
  * Fetch the list of deck names from AnkiConnect.
  * @param {{ timeoutMs?: number, url?: string }=} opts
  * @returns {Promise<string[]>}
