@@ -179,6 +179,98 @@ export function buildClozeFields(capture) {
 }
 
 /**
+ * Build a stable, filesystem-safe filename for an image we are about
+ * to upload to Anki's media collection. We prefer the original
+ * basename when it carries a sensible extension so Anki renders the
+ * thumbnail correctly, and prefix with `h2a-<timestamp>` to avoid
+ * collisions across captures.
+ *
+ * @param {string} srcUrl
+ * @returns {string}
+ */
+export function buildImageFilename(srcUrl) {
+  const ts = Date.now();
+  const fallback = `h2a-${ts}.img`;
+  if (!srcUrl) return fallback;
+  try {
+    if (/^data:/i.test(srcUrl)) {
+      const m = /^data:image\/([a-z0-9+.-]+)/i.exec(srcUrl);
+      const ext = m && m[1] ? m[1].toLowerCase().replace("jpeg", "jpg") : "img";
+      return `h2a-${ts}.${ext}`;
+    }
+    const u = new URL(srcUrl);
+    const last = u.pathname.split("/").filter(Boolean).pop() || "image";
+    const safe = last.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-64);
+    if (/\.(png|jpe?g|gif|webp|svg|bmp|avif|tiff?)$/i.test(safe)) {
+      return `h2a-${ts}-${safe}`;
+    }
+    return `h2a-${ts}-${safe}.img`;
+  } catch (_err) {
+    return fallback;
+  }
+}
+
+/**
+ * Build fields for an image-front card. The `front` is intentionally
+ * left blank because AnkiConnect's `picture` parameter will inject an
+ * `<img src="…">` tag pointing at the saved media file. The `back`
+ * carries the source page citation, mirroring the text-card layout.
+ *
+ * @param {{ imageUrl?: string, url?: string, title?: string, hostname?: string }} capture
+ * @returns {{ front: string, back: string }}
+ */
+export function buildImageCardFields(capture) {
+  const cap = capture || {};
+  const url = (cap.url || "").trim();
+  const title = (cap.title || cap.hostname || url || "source").trim();
+  const parts = [];
+  if (url) {
+    parts.push(`<p class="h2a-source"><a href="${escapeHtml(url)}">${escapeHtml(title)}</a></p>`);
+  } else if (title) {
+    parts.push(`<p class="h2a-source">${escapeHtml(title)}</p>`);
+  }
+  return { front: "", back: parts.join("\n") };
+}
+
+/**
+ * Add an image-front note via AnkiConnect. The image is referenced by
+ * URL; AnkiConnect itself fetches and stores it in Anki's media folder
+ * under the supplied filename, then replaces the named front field
+ * with the appropriate `<img>` tag. The back field carries the source
+ * citation.
+ *
+ * @param {{ deckName: string, modelName: string, imageUrl: string, back?: string, filename?: string, tags?: string[], allowDuplicate?: boolean, frontField?: string, backField?: string, timeoutMs?: number, url?: string }} args
+ * @returns {Promise<number>}
+ */
+export async function addImageNote(args) {
+  if (!args || typeof args !== "object") throw new Error("addImageNote: missing args");
+  const deckName = (args.deckName || "").trim();
+  const modelName = (args.modelName || "").trim();
+  const imageUrl = (args.imageUrl || "").trim();
+  if (!deckName) throw new Error("addImageNote: deckName required");
+  if (!modelName) throw new Error("addImageNote: modelName required");
+  if (!imageUrl) throw new Error("addImageNote: imageUrl required");
+  const frontField = (args.frontField || "Front").trim() || "Front";
+  const backField = (args.backField || "Back").trim() || "Back";
+  const filename = (args.filename && args.filename.trim()) || buildImageFilename(imageUrl);
+  const tags = Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string" && t.length) : [];
+  const params = {
+    note: {
+      deckName,
+      modelName,
+      fields: { [frontField]: "", [backField]: args.back || "" },
+      tags,
+      options: { allowDuplicate: !!args.allowDuplicate },
+      picture: [{ url: imageUrl, filename, fields: [frontField] }],
+    },
+  };
+  const result = await invoke("addNote", params, { timeoutMs: args.timeoutMs ?? 10000, url: args.url });
+  const id = typeof result === "number" ? result : Number(result);
+  if (!Number.isFinite(id) || id <= 0) throw new Error("addImageNote: AnkiConnect returned no note id");
+  return id;
+}
+
+/**
  * Add a cloze-deletion note via AnkiConnect. Uses the standard Cloze
  * note-type fields (`Text` + `Back Extra`) by default but the caller
  * may override either. AnkiConnect rejects cloze notes that contain no

@@ -36,6 +36,15 @@ if (!anki.includes("export async function addNote") || !anki.includes("export fu
 if (!anki.includes("export function buildClozeFields") || !anki.includes("export async function addClozeNote")) {
   console.error("src/anki.js must export buildClozeFields and addClozeNote"); process.exit(1);
 }
+if (!anki.includes("export function buildImageCardFields") || !anki.includes("export async function addImageNote") || !anki.includes("export function buildImageFilename")) {
+  console.error("src/anki.js must export buildImageCardFields, addImageNote, buildImageFilename"); process.exit(1);
+}
+if (!bg.includes("Send Image to Anki") || !bg.includes("contexts: [\"image\"]")) {
+  console.error("background.js must register 'Send Image to Anki' context menu scoped to image"); process.exit(1);
+}
+if (!bg.includes("h2a:send-capture-image") || !bg.includes("sendCaptureAsImage")) {
+  console.error("background.js must wire h2a:send-capture-image to sendCaptureAsImage"); process.exit(1);
+}
 if (!bg.includes("Send to Anki as Cloze")) {
   console.error("background.js must register 'Send to Anki as Cloze' context menu"); process.exit(1);
 }
@@ -76,6 +85,22 @@ if (cloze.text.split("{{c1::").length !== 2) { console.error("buildClozeFields: 
 if (!cloze.extra.includes("href=\"https://example.com/post\"")) { console.error("buildClozeFields: extra missing source link"); process.exit(1); }
 const clozeSolo = buildClozeFields({ text: "alpha & beta", url: "", title: "" });
 if (!clozeSolo.text.includes("{{c1::alpha &amp; beta}}")) { console.error("buildClozeFields: selection HTML-escape failed"); process.exit(1); }
+
+// Behavioural check: buildImageCardFields + buildImageFilename.
+const { buildImageCardFields, buildImageFilename } = await import("../src/anki.js");
+const img = buildImageCardFields({
+  imageUrl: "https://example.com/diagram.png",
+  url: "https://example.com/post",
+  title: "Diagram Post",
+});
+if (img.front !== "") { console.error("buildImageCardFields: front must be empty (filled by AnkiConnect picture)"); process.exit(1); }
+if (!img.back.includes("href=\"https://example.com/post\"")) { console.error("buildImageCardFields: back missing source link"); process.exit(1); }
+const fname = buildImageFilename("https://example.com/path/to/Diagram%20One.png");
+if (!fname.startsWith("h2a-") || !/\.png$/i.test(fname)) { console.error("buildImageFilename: should keep .png extension"); process.exit(1); }
+const dataFname = buildImageFilename("data:image/jpeg;base64,AAAA");
+if (!/\.jpg$/i.test(dataFname)) { console.error("buildImageFilename: should derive .jpg from data: URL"); process.exit(1); }
+const fallbackFname = buildImageFilename("");
+if (!fallbackFname.startsWith("h2a-")) { console.error("buildImageFilename: empty input should fall back"); process.exit(1); }
 if (!bg.includes("h2a:list-decks") || !bg.includes("h2a:list-models")) { console.error("background.js must handle h2a:list-decks and h2a:list-models"); process.exit(1); }
 if (!bg.includes("h2a:get-settings") || !bg.includes("h2a:set-settings")) { console.error("background.js must handle h2a:get-settings and h2a:set-settings"); process.exit(1); }
 const optHtml = fs.readFileSync("src/options.html", "utf8");

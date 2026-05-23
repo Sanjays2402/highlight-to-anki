@@ -14,14 +14,17 @@ import {
   modelNames as ankiModelNames,
   addNote as ankiAddNote,
   addClozeNote as ankiAddClozeNote,
+  addImageNote as ankiAddImageNote,
   buildCardFields,
   buildClozeFields,
+  buildImageCardFields,
   hostnameTag,
 } from "./anki.js";
 
 const TAG = "[highlight-to-anki:bg]";
 const MENU_ID = "h2a-send-to-anki";
 const MENU_ID_CLOZE = "h2a-send-to-anki-cloze";
+const MENU_ID_IMAGE = "h2a-send-image-to-anki";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
 const SETTINGS_KEY = "h2a:settings";
@@ -83,7 +86,60 @@ function ensureMenu() {
         if (err) console.warn(TAG, "cloze menu create error:", err.message);
       },
     );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_IMAGE,
+        title: "Send Image to Anki",
+        contexts: ["image"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "image menu create error:", err.message);
+      },
+    );
   });
+}
+
+/**
+ * Derive a hostname from an arbitrary URL string. Returns an empty
+ * string when the URL is unparseable; callers can then skip the
+ * `site:` tag the same way they would for a tab without a hostname.
+ * @param {string|undefined|null} u
+ * @returns {string}
+ */
+function safeHostname(u) {
+  if (!u) return "";
+  try {
+    return new URL(u).hostname || "";
+  } catch (_err) {
+    return "";
+  }
+}
+
+/**
+ * Build a capture snapshot for a right-clicked image. Mirrors the
+ * shape of {@link captureSelection} in the content script so the rest
+ * of the pipeline (staging, sending, history) can stay shape-agnostic.
+ *
+ * @param {chrome.contextMenus.OnClickData} info
+ * @param {chrome.tabs.Tab|undefined} tab
+ * @returns {object}
+ */
+function captureFromImage(info, tab) {
+  const srcUrl = (info && info.srcUrl) || "";
+  const pageUrl = (info && info.pageUrl) || (tab && tab.url) || "";
+  const title = (tab && tab.title) || pageUrl || "image";
+  return {
+    kind: "image",
+    text: "",
+    html: srcUrl ? `<img src="${srcUrl}">` : "",
+    imageUrl: srcUrl,
+    url: pageUrl,
+    title,
+    hostname: safeHostname(pageUrl),
+    paragraph: "",
+    capturedAt: new Date().toISOString(),
+  };
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -159,7 +215,9 @@ async function requestCapture(tabId, fallbackText) {
 
 /** Persist a capture to a bounded ring buffer in chrome.storage.local. */
 async function stagePending(capture) {
-  if (!capture || !capture.text) return null;
+  if (!capture) return null;
+  // Image captures have no `text`; allow either text or imageUrl as proof-of-content.
+  if (!capture.text && !capture.imageUrl) return null;
   const store = await chrome.storage.local.get(PENDING_KEY);
   const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
   const entry = {
@@ -227,6 +285,63 @@ async function sendCaptureToAnki(entry) {
 }
 
 /**
+ * Send a captured image to Anki as the front of a new note. Uses the
+ * configured default deck/model and lets AnkiConnect download the
+ * image into Anki's media folder via the `picture` parameter — we
+ * never touch the bytes ourselves, which keeps things MV3-friendly
+ * (no extra host permission churn beyond `<all_urls>` already declared
+ * for content-script reach).
+ *
+ * @param {object} entry staged image capture
+ * @returns {Promise<{ ok: boolean, noteId: number|null, error: string|null, entry: object }>}
+ */
+async function sendCaptureAsImage(entry) {
+  if (!entry || !entry.imageUrl) {
+    return { ok: false, noteId: null, error: "empty image capture", entry };
+  }
+  const settings = await loadSettings();
+  if (!settings.defaultDeck || !settings.defaultModel) {
+    const patched = await patchPending(entry.id, {
+      status: "needs-config",
+      error: "No default deck/model configured",
+    });
+    return {
+      ok: false,
+      noteId: null,
+      error: "No default deck/model configured",
+      entry: patched || entry,
+    };
+  }
+  const { back } = buildImageCardFields(entry);
+  await patchPending(entry.id, { status: "sending", mode: "image", error: null });
+  const siteTag = hostnameTag(entry.hostname);
+  const tags = siteTag
+    ? ["highlight-to-anki", "image", siteTag]
+    : ["highlight-to-anki", "image"];
+  try {
+    const noteId = await ankiAddImageNote({
+      deckName: settings.defaultDeck,
+      modelName: settings.defaultModel,
+      imageUrl: entry.imageUrl,
+      back,
+      tags,
+    });
+    const patched = await patchPending(entry.id, {
+      status: "sent",
+      mode: "image",
+      noteId,
+      error: null,
+      sentAt: new Date().toISOString(),
+    });
+    return { ok: true, noteId, error: null, entry: patched || entry };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    const patched = await patchPending(entry.id, { status: "failed", mode: "image", error: msg });
+    return { ok: false, noteId: null, error: msg, entry: patched || entry };
+  }
+}
+
+/**
  * Send a capture entry to Anki as a cloze-deletion note. Uses the
  * configured `clozeModel` (falling back to `defaultModel`) and the
  * configured `defaultDeck`. The card is tagged `cloze` in addition to
@@ -286,16 +401,33 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const isBasic = info.menuItemId === MENU_ID;
     const isCloze = info.menuItemId === MENU_ID_CLOZE;
-    if (!isBasic && !isCloze) return;
+    const isImage = info.menuItemId === MENU_ID_IMAGE;
+    if (!isBasic && !isCloze && !isImage) return;
     if (!tab || tab.id == null) return;
-    const capture = await requestCapture(tab.id, info.selectionText);
+    const capture = isImage
+      ? captureFromImage(info, tab)
+      : await requestCapture(tab.id, info.selectionText);
     const entry = await stagePending(capture);
     try {
       await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
     } catch (_) { /* no popup open */ }
-    console.log(TAG, "staged capture", capture.hostname || "(unknown)", capture.text.slice(0, 60));
+    const preview = isImage ? (capture.imageUrl || "").slice(0, 80) : (capture.text || "").slice(0, 60);
+    console.log(TAG, "staged capture", capture.hostname || "(unknown)", preview);
     if (!entry) return;
     const settings = await loadSettings();
+    if (isImage) {
+      if (!settings.defaultDeck || !settings.defaultModel) return;
+      const result = await sendCaptureAsImage(entry);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: result });
+      } catch (_) { /* no popup open */ }
+      if (result.ok) {
+        console.log(TAG, "sent image note", result.noteId, "→", settings.defaultDeck);
+      } else {
+        console.warn(TAG, "image send failed:", result.error);
+      }
+      return;
+    }
     if (isCloze) {
       const modelName = settings.clozeModel || settings.defaultModel;
       if (!settings.defaultDeck || !modelName) return;
@@ -383,6 +515,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
       const result = await sendCaptureAsCloze(entry);
+      sendResponse({ ok: result.ok, payload: result, error: result.error });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:send-capture-image") {
+    (async () => {
+      const id = msg.payload && msg.payload.id;
+      const store = await chrome.storage.local.get(PENDING_KEY);
+      const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+      const entry = id ? list.find((e) => e && e.id === id) : list[0];
+      if (!entry) {
+        sendResponse({ ok: false, error: "capture not found" });
+        return;
+      }
+      const result = await sendCaptureAsImage(entry);
       sendResponse({ ok: result.ok, payload: result, error: result.error });
     })();
     return true;
