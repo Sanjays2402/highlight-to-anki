@@ -6,6 +6,12 @@
 // so the DOM stays in sync.
 
 import { initTheme } from "./theme.js";
+import {
+  buildCardFields,
+  buildClozeFields,
+  buildImageCardFields,
+  escapeHtml,
+} from "./anki.js";
 
 const TAG = "[highlight-to-anki:popup]";
 
@@ -39,7 +45,21 @@ const els = {
   syncTotal: document.getElementById("sync-total"),
   syncErrorRow: document.getElementById("sync-error-row"),
   syncError: document.getElementById("sync-error"),
+  previewCard: document.getElementById("preview-card"),
+  previewPill: document.getElementById("preview-pill"),
+  previewModeLabel: document.getElementById("preview-mode-label"),
+  previewFront: document.getElementById("preview-front"),
+  previewBack: document.getElementById("preview-back"),
+  previewSource: document.getElementById("preview-source"),
+  previewErrorRow: document.getElementById("preview-error-row"),
+  previewError: document.getElementById("preview-error"),
+  previewDismiss: document.getElementById("preview-dismiss"),
+  previewEdit: document.getElementById("preview-edit"),
+  previewSend: document.getElementById("preview-send"),
+  previewSendLabel: document.getElementById("preview-send-label"),
 };
+
+let activePreviewId = null;
 
 function setPill(state, label) {
   if (!els.pill) return;
@@ -210,9 +230,19 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg && (msg.type === "h2a:history-updated" || msg.type === "h2a:capture-sent")) {
     loadHistory();
     loadSync();
+    if (msg.type === "h2a:capture-sent") {
+      const payload = msg.payload || {};
+      const entry = payload.entry;
+      if (entry && entry.id === activePreviewId) {
+        if (payload.ok) hidePreview();
+        else showPreviewError(payload.error || "Send failed");
+      }
+    }
   }
   if (msg && msg.type === "h2a:capture-staged") {
     loadSync();
+    const entry = msg.payload;
+    if (entry && (entry.text || entry.imageUrl)) renderPreview(entry);
   }
 });
 
@@ -354,6 +384,129 @@ async function loadSync() {
   }
 }
 
+function hidePreview() {
+  activePreviewId = null;
+  if (els.previewCard) els.previewCard.hidden = true;
+  if (els.previewErrorRow) els.previewErrorRow.hidden = true;
+  if (els.previewSend) {
+    els.previewSend.disabled = false;
+    if (els.previewSendLabel) els.previewSendLabel.textContent = "Send";
+  }
+}
+
+function showPreviewError(msg) {
+  if (!els.previewErrorRow || !els.previewError) return;
+  els.previewError.textContent = msg || "Unknown error";
+  els.previewErrorRow.hidden = false;
+  if (els.previewPill) els.previewPill.dataset.state = "bad";
+  if (els.previewSend) {
+    els.previewSend.disabled = false;
+    if (els.previewSendLabel) els.previewSendLabel.textContent = "Retry";
+  }
+}
+
+function renderPreview(entry) {
+  if (!entry || !els.previewCard) return;
+  activePreviewId = entry.id || null;
+  if (els.previewErrorRow) els.previewErrorRow.hidden = true;
+  if (els.previewSend) {
+    els.previewSend.disabled = false;
+    if (els.previewSendLabel) els.previewSendLabel.textContent = "Send";
+  }
+  const isImage = !!entry.imageUrl && !entry.text;
+  const isCloze = entry.mode === "cloze";
+  let mode = "basic";
+  if (isImage) mode = "image";
+  else if (isCloze) mode = "cloze";
+  if (els.previewPill) {
+    els.previewPill.dataset.state = "ok";
+    els.previewPill.dataset.mode = mode;
+  }
+  if (els.previewModeLabel) {
+    els.previewModeLabel.textContent = mode === "cloze" ? "Cloze" : mode === "image" ? "Image" : "Card";
+  }
+  if (els.previewFront && els.previewBack) {
+    if (mode === "image") {
+      const { back } = buildImageCardFields(entry);
+      const safeImg = escapeHtml(entry.imageUrl || "");
+      els.previewFront.innerHTML = safeImg ? `<img src="${safeImg}" alt="">` : "";
+      els.previewBack.innerHTML = back || "";
+    } else if (mode === "cloze") {
+      const { text, extra } = buildClozeFields(entry);
+      // Render {{c1::X}} as a styled span for preview only.
+      const rendered = (text || "").replace(/\{\{c\d+::(.+?)\}\}/g, '<span class="cloze">$1</span>');
+      els.previewFront.innerHTML = rendered;
+      els.previewBack.innerHTML = extra || "";
+    } else {
+      const { front, back } = buildCardFields(entry);
+      els.previewFront.innerHTML = front || "";
+      els.previewBack.innerHTML = back || "";
+    }
+  }
+  if (els.previewSource) {
+    if (entry.url) {
+      const safeUrl = escapeHtml(entry.url);
+      const label = escapeHtml(entry.hostname || entry.url);
+      els.previewSource.innerHTML = `<a class="src" href="${safeUrl}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    } else {
+      els.previewSource.textContent = "—";
+    }
+  }
+  els.previewCard.hidden = false;
+}
+
+async function loadInitialPreview() {
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:list-pending" });
+    if (!reply || !reply.ok) return;
+    const list = Array.isArray(reply.payload) ? reply.payload : [];
+    const pending = list.find((e) => e && (e.status === "staged" || e.status === "failed" || e.status === "needs-config"));
+    if (pending) {
+      renderPreview(pending);
+      if (pending.status === "failed" && pending.error) showPreviewError(pending.error);
+      if (pending.status === "needs-config") showPreviewError(pending.error || "No default deck/model configured");
+    }
+  } catch (err) {
+    console.warn(TAG, "initial preview load failed:", err);
+  }
+}
+
+els.previewDismiss?.addEventListener("click", () => {
+  hidePreview();
+});
+els.previewEdit?.addEventListener("click", async () => {
+  if (!activePreviewId) return;
+  try {
+    await chrome.runtime.sendMessage({ type: "h2a:open-editor", payload: { id: activePreviewId } });
+    window.close();
+  } catch (err) {
+    console.warn(TAG, "preview edit failed:", err);
+  }
+});
+els.previewSend?.addEventListener("click", async () => {
+  if (!activePreviewId) return;
+  if (els.previewSend) {
+    els.previewSend.disabled = true;
+    if (els.previewSendLabel) els.previewSendLabel.textContent = "Sending…";
+  }
+  if (els.previewPill) els.previewPill.dataset.state = "checking";
+  if (els.previewErrorRow) els.previewErrorRow.hidden = true;
+  const mode = els.previewPill?.dataset.mode || "basic";
+  const type = mode === "cloze" ? "h2a:send-capture-cloze"
+    : mode === "image" ? "h2a:send-capture-image"
+    : "h2a:send-capture";
+  try {
+    const reply = await chrome.runtime.sendMessage({ type, payload: { id: activePreviewId } });
+    if (reply && reply.ok) {
+      hidePreview();
+    } else {
+      showPreviewError((reply && reply.error) || "Send failed");
+    }
+  } catch (err) {
+    showPreviewError(err && err.message ? err.message : "Send failed");
+  }
+});
+
 // Match system theme for the first paint.
 const themeCtl = initTheme({
   onChange: ({ preference }) => {
@@ -372,6 +525,7 @@ checkHealth();
 loadBatch();
 loadHistory();
 loadSync();
+loadInitialPreview();
 
 // Light polling while popup is open so in-flight sends animate without push.
 const syncPoll = setInterval(loadSync, 2500);

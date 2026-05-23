@@ -116,6 +116,52 @@
       </div>
     </section>
 
+    <section class="card glass" id="preview-card" aria-live="polite" hidden>
+      <div class="card-head">
+        <span class="card-label">Preview</span>
+        <span class="pill pill-checking" id="preview-pill" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text" id="preview-mode-label">Card</span>
+        </span>
+      </div>
+      <div class="card-body" id="preview-body">
+        <div class="preview-face preview-front" id="preview-front" aria-label="Front"></div>
+        <div class="preview-divider" aria-hidden="true">
+          <span class="preview-divider-label">Back</span>
+        </div>
+        <div class="preview-face preview-back" id="preview-back" aria-label="Back"></div>
+        <div class="kv" id="preview-meta-row">
+          <span class="k">Source</span>
+          <span class="v" id="preview-source">—</span>
+        </div>
+        <div class="kv kv-error" id="preview-error-row" hidden>
+          <span class="k">Error</span>
+          <span class="v" id="preview-error">—</span>
+        </div>
+      </div>
+      <div class="card-foot preview-foot">
+        <button id="preview-dismiss" class="btn btn-ghost" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M6 6l12 12M18 6L6 18"/>
+          </svg>
+          <span>Dismiss</span>
+        </button>
+        <button id="preview-edit" class="btn btn-ghost" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 20h4l10-10-4-4L4 16z"/>
+            <path d="M14 6l4 4"/>
+          </svg>
+          <span>Edit</span>
+        </button>
+        <button id="preview-send" class="btn btn-primary" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 11l18-8-8 18-2-8-8-2z"/>
+          </svg>
+          <span id="preview-send-label">Send</span>
+        </button>
+      </div>
+    </section>
+
     <section class="card glass" id="batch-card" aria-live="polite">
       <div class="card-head">
         <span class="card-label">Batch</span>
