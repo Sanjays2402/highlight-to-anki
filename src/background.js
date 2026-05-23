@@ -30,6 +30,8 @@ const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
 const BATCH_KEY = "h2a:batch";
 const BATCH_LIMIT = 100;
+const HISTORY_KEY = "h2a:history";
+const HISTORY_LIMIT = 50;
 const SETTINGS_KEY = "h2a:settings";
 const DEFAULT_SETTINGS = Object.freeze({
   defaultDeck: "",
@@ -37,6 +39,39 @@ const DEFAULT_SETTINGS = Object.freeze({
   clozeModel: "",
   updatedAt: null,
 });
+
+/**
+ * Append a successful send to the recent history ring buffer. Stored in
+ * chrome.storage.local so it persists across popup opens but never leaves
+ * the device. Bounded at {@link HISTORY_LIMIT} most-recent items.
+ *
+ * @param {object} entry the staged capture (post-send patch)
+ * @param {{ noteId: number|null, mode?: string, deck?: string }} extra
+ */
+async function appendHistory(entry, extra) {
+  if (!entry) return null;
+  const store = await chrome.storage.local.get(HISTORY_KEY);
+  const list = Array.isArray(store[HISTORY_KEY]) ? store[HISTORY_KEY] : [];
+  const row = {
+    id: entry.id || `h-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text: (entry.text || "").slice(0, 400),
+    imageUrl: entry.imageUrl || "",
+    url: entry.url || "",
+    title: entry.title || "",
+    hostname: entry.hostname || "",
+    mode: (extra && extra.mode) || entry.mode || "basic",
+    noteId: extra && extra.noteId != null ? extra.noteId : entry.noteId || null,
+    deck: (extra && extra.deck) || "",
+    sentAt: entry.sentAt || new Date().toISOString(),
+  };
+  list.unshift(row);
+  if (list.length > HISTORY_LIMIT) list.length = HISTORY_LIMIT;
+  await chrome.storage.local.set({ [HISTORY_KEY]: list });
+  try {
+    await chrome.runtime.sendMessage({ type: "h2a:history-updated", payload: row });
+  } catch (_) { /* no popup open */ }
+  return row;
+}
 
 /** Read settings from sync storage, falling back to local + defaults. */
 async function loadSettings() {
@@ -183,7 +218,7 @@ async function sendBatch() {
       });
       sent += 1;
       console.log(TAG, "batch sent note", noteId);
-      void noteId;
+      await appendHistory({ ...entry, noteId, sentAt: new Date().toISOString() }, { mode: "basic", noteId, deck: settings.defaultDeck });
     } catch (err) {
       failed += 1;
       const msg = err && err.message ? err.message : String(err);
@@ -371,6 +406,7 @@ async function sendCaptureToAnki(entry) {
       tags,
     });
     const patched = await patchPending(entry.id, { status: "sent", noteId, error: null, sentAt: new Date().toISOString() });
+    await appendHistory(patched || { ...entry, noteId }, { mode: "basic", noteId, deck: settings.defaultDeck });
     return { ok: true, noteId, error: null, entry: patched || entry };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
@@ -428,6 +464,7 @@ async function sendCaptureAsImage(entry) {
       error: null,
       sentAt: new Date().toISOString(),
     });
+    await appendHistory(patched || { ...entry, noteId, mode: "image" }, { mode: "image", noteId, deck: settings.defaultDeck });
     return { ok: true, noteId, error: null, entry: patched || entry };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
@@ -484,6 +521,7 @@ async function sendCaptureAsCloze(entry) {
       error: null,
       sentAt: new Date().toISOString(),
     });
+    await appendHistory(patched || { ...entry, noteId, mode: "cloze" }, { mode: "cloze", noteId, deck: settings.defaultDeck });
     return { ok: true, noteId, error: null, entry: patched || entry };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
@@ -636,6 +674,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const result = await sendCaptureAsImage(entry);
       sendResponse({ ok: result.ok, payload: result, error: result.error });
     })();
+    return true;
+  }
+  if (msg.type === "h2a:list-history") {
+    chrome.storage.local.get(HISTORY_KEY).then((store) => {
+      sendResponse({ ok: true, payload: store[HISTORY_KEY] || [] });
+    });
+    return true;
+  }
+  if (msg.type === "h2a:clear-history") {
+    chrome.storage.local.set({ [HISTORY_KEY]: [] }).then(() => sendResponse({ ok: true }));
     return true;
   }
   if (msg.type === "h2a:list-batch") {

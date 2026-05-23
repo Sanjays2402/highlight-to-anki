@@ -106,6 +106,36 @@
         </button>
       </div>
     </section>
+    <section class="card glass" id="recent-card" aria-live="polite">
+      <div class="card-head">
+        <span class="card-label">Recent</span>
+        <span class="pill pill-checking" id="recent-pill" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text" id="recent-count">0 sent</span>
+        </span>
+      </div>
+      <div class="card-body" id="recent-body">
+        <div class="empty" id="recent-empty">
+          <svg class="empty-art" width="96" height="72" viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 38c8-18 30-22 46-14 10 5 18 4 28-2 10-6 22-2 24 10 2 12-8 22-22 24-26 4-58-2-66-8-10-6-12-6-10-10z" opacity="0.30"/>
+            <circle cx="60" cy="45" r="22"/>
+            <path d="M60 33v12l8 5"/>
+          </svg>
+          <p class="empty-text">No cards sent yet. Sent cards will land here so you can glance back at the last few you saved to Anki.</p>
+        </div>
+        <ul class="recent-list" id="recent-list" hidden></ul>
+      </div>
+      <div class="card-foot recent-foot">
+        <button id="recent-clear" class="btn btn-ghost" type="button" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16"/>
+            <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+            <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>
+          </svg>
+          <span>Clear history</span>
+        </button>
+      </div>
+    </section>
   </main>
   <footer class="footer"><span class="version">v0.1.0</span></footer>
   <script type="module" src="popup.js"></script>

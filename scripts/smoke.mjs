@@ -124,4 +124,21 @@ if (hostnameTag("news.ycombinator.com") !== "site:news.ycombinator.com") { conso
 if (hostnameTag("") !== null || hostnameTag(null) !== null || hostnameTag(undefined) !== null) { console.error("hostnameTag: empty inputs should return null"); process.exit(1); }
 if (hostnameTag("bad host name") !== "site:badhostname") { console.error("hostnameTag: should strip whitespace"); process.exit(1); }
 
+// Recent cards history feature.
+if (!bg.includes("h2a:list-history") || !bg.includes("h2a:clear-history")) {
+  console.error("background.js must handle h2a:list-history and h2a:clear-history"); process.exit(1);
+}
+if (!bg.includes("appendHistory") || !bg.includes("HISTORY_KEY")) {
+  console.error("background.js must implement appendHistory + HISTORY_KEY for recent cards"); process.exit(1);
+}
+if (!popupHtml.includes("recent-card") || !popupHtml.includes("recent-list") || !popupHtml.includes("Recent")) {
+  console.error("popup.html must render a Recent history section"); process.exit(1);
+}
+if (!popupJs.includes("h2a:list-history") || !popupJs.includes("renderHistory")) {
+  console.error("popup.js must render recent history via h2a:list-history"); process.exit(1);
+}
+if (!popupJs.includes("recent-item")) {
+  console.error("popup.js must render .recent-item rows for history"); process.exit(1);
+}
+
 console.log("\u2713 smoke ok");

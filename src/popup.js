@@ -25,6 +25,11 @@ const els = {
   batchSend: document.getElementById("batch-send"),
   batchErrorRow: document.getElementById("batch-error-row"),
   batchError: document.getElementById("batch-error"),
+  recentPill: document.getElementById("recent-pill"),
+  recentCount: document.getElementById("recent-count"),
+  recentEmpty: document.getElementById("recent-empty"),
+  recentList: document.getElementById("recent-list"),
+  recentClear: document.getElementById("recent-clear"),
 };
 
 function setPill(state, label) {
@@ -192,7 +197,120 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === "h2a:batch-updated") {
     loadBatch();
   }
+  if (msg && (msg.type === "h2a:history-updated" || msg.type === "h2a:capture-sent")) {
+    loadHistory();
+  }
 });
+
+/** Render recent-history entries (newest first). */
+function fmtRelative(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diff = Math.max(0, Date.now() - then);
+  const s = Math.round(diff / 1000);
+  if (s < 45) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  if (d < 7) return `${d}d ago`;
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+function renderHistory(items) {
+  const list = Array.isArray(items) ? items : [];
+  const n = list.length;
+  if (els.recentCount) els.recentCount.textContent = n === 1 ? "1 sent" : `${n} sent`;
+  if (els.recentPill) els.recentPill.dataset.state = n > 0 ? "ok" : "idle";
+  if (els.recentEmpty) els.recentEmpty.hidden = n > 0;
+  if (els.recentList) {
+    els.recentList.hidden = n === 0;
+    els.recentList.innerHTML = "";
+    for (const row of list) {
+      const li = document.createElement("li");
+      li.className = "recent-item";
+
+      const text = document.createElement("span");
+      text.className = "recent-item-text";
+      const previewSource = row.mode === "image" && !row.text
+        ? (row.title || row.imageUrl || "Image card")
+        : (row.text || row.title || "(no text)");
+      text.textContent = previewSource.slice(0, 200);
+      li.appendChild(text);
+
+      const mode = document.createElement("span");
+      mode.className = "recent-item-mode";
+      mode.dataset.mode = row.mode || "basic";
+      mode.textContent = row.mode === "cloze" ? "Cloze"
+        : row.mode === "image" ? "Image"
+        : "Card";
+      li.appendChild(mode);
+
+      const meta = document.createElement("span");
+      meta.className = "recent-item-meta";
+      const when = document.createElement("span");
+      when.textContent = fmtRelative(row.sentAt);
+      meta.appendChild(when);
+      if (row.hostname) {
+        const sep = document.createElement("span");
+        sep.className = "dot-sep";
+        sep.textContent = "\u00B7";
+        meta.appendChild(sep);
+        if (row.url) {
+          const a = document.createElement("a");
+          a.className = "recent-item-link";
+          a.href = row.url;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.textContent = row.hostname;
+          meta.appendChild(a);
+        } else {
+          const span = document.createElement("span");
+          span.textContent = row.hostname;
+          meta.appendChild(span);
+        }
+      }
+      if (row.deck) {
+        const sep2 = document.createElement("span");
+        sep2.className = "dot-sep";
+        sep2.textContent = "\u00B7";
+        meta.appendChild(sep2);
+        const deck = document.createElement("span");
+        deck.textContent = row.deck;
+        meta.appendChild(deck);
+      }
+      li.appendChild(meta);
+      els.recentList.appendChild(li);
+    }
+  }
+  if (els.recentClear) els.recentClear.disabled = n === 0;
+}
+
+async function loadHistory() {
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:list-history" });
+    if (reply && reply.ok) renderHistory(reply.payload || []);
+  } catch (err) {
+    console.warn(TAG, "history load failed:", err);
+  }
+}
+
+async function clearHistory() {
+  try {
+    await chrome.runtime.sendMessage({ type: "h2a:clear-history" });
+  } catch (err) {
+    console.warn(TAG, "history clear failed:", err);
+  }
+  renderHistory([]);
+}
+
+els.recentClear?.addEventListener("click", clearHistory);
 
 // Match system theme for the first paint.
 const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
@@ -200,3 +318,4 @@ document.body.dataset.theme = prefersLight ? "light" : "dark";
 
 checkHealth();
 loadBatch();
+loadHistory();
