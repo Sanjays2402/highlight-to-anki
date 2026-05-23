@@ -58,7 +58,123 @@ const els = {
   previewEdit: document.getElementById("preview-edit"),
   previewSend: document.getElementById("preview-send"),
   previewSendLabel: document.getElementById("preview-send-label"),
+  toastStack: document.getElementById("toast-stack"),
 };
+
+// ----------------------------------------------------------------------
+// Toast notifications
+// ----------------------------------------------------------------------
+// Liquid-glass slide-up surface anchored above the footer. Success
+// toasts carry an Undo affordance that calls deleteNotes on the
+// AnkiConnect side so a mis-fired card can be retracted in one click.
+const TOAST_DURATION_MS = 6000;
+const TOAST_LEAVE_MS = 220;
+
+function iconSvg(name) {
+  if (name === "check") {
+    return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4 4 10-10"/></svg>';
+  }
+  if (name === "alert") {
+    return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0z"/></svg>';
+  }
+  return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+}
+
+function dismissToast(toast) {
+  if (!toast || toast.dataset.leaving === "1") return;
+  toast.dataset.leaving = "1";
+  if (toast._timer) { clearTimeout(toast._timer); toast._timer = null; }
+  toast.classList.add("toast-leave");
+  toast.classList.remove("toast-enter");
+  setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, TOAST_LEAVE_MS);
+}
+
+function showToast({ tone = "ok", title, message, noteId = null, duration = TOAST_DURATION_MS } = {}) {
+  if (!els.toastStack) return null;
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.dataset.tone = tone === "bad" ? "bad" : "ok";
+  if (noteId) toast.dataset.noteId = String(noteId);
+  const ariaTitle = (title || "").replace(/[<>&"']/g, "");
+  toast.setAttribute("role", tone === "bad" ? "alert" : "status");
+
+  const icon = document.createElement("div");
+  icon.className = "toast-icon";
+  icon.innerHTML = iconSvg(tone === "bad" ? "alert" : "check");
+  toast.appendChild(icon);
+
+  const body = document.createElement("div");
+  body.className = "toast-body";
+  if (title) {
+    const t = document.createElement("div");
+    t.className = "toast-title";
+    t.textContent = title;
+    body.appendChild(t);
+  }
+  if (message) {
+    const m = document.createElement("div");
+    m.className = "toast-msg";
+    m.textContent = message;
+    body.appendChild(m);
+  }
+  toast.appendChild(body);
+
+  const actions = document.createElement("div");
+  actions.className = "toast-actions";
+  if (tone === "ok" && noteId) {
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "toast-undo";
+    undo.textContent = "Undo";
+    undo.setAttribute("aria-label", `Undo send for note ${noteId}`);
+    undo.addEventListener("click", async () => {
+      if (undo.disabled) return;
+      undo.disabled = true;
+      const prev = undo.textContent;
+      undo.textContent = "Undoing…";
+      try {
+        const reply = await chrome.runtime.sendMessage({ type: "h2a:undo-last-send", payload: { noteId } });
+        if (reply && reply.ok) {
+          dismissToast(toast);
+          showToast({ tone: "ok", title: "Undone", message: `Note ${noteId} removed from Anki.`, duration: 3200 });
+          loadHistory();
+          loadSync();
+        } else {
+          undo.disabled = false;
+          undo.textContent = prev;
+          showToast({ tone: "bad", title: "Undo failed", message: (reply && reply.error) || "AnkiConnect rejected the delete." });
+        }
+      } catch (err) {
+        undo.disabled = false;
+        undo.textContent = prev;
+        showToast({ tone: "bad", title: "Undo failed", message: err && err.message ? err.message : "Unknown error" });
+      }
+    });
+    actions.appendChild(undo);
+  }
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "toast-close";
+  close.setAttribute("aria-label", `Dismiss ${ariaTitle || "notification"}`);
+  close.innerHTML = iconSvg("x");
+  close.addEventListener("click", () => dismissToast(toast));
+  actions.appendChild(close);
+  toast.appendChild(actions);
+
+  const progress = document.createElement("div");
+  progress.className = "toast-progress";
+  progress.style.transition = `transform ${duration}ms linear`;
+  toast.appendChild(progress);
+
+  els.toastStack.appendChild(toast);
+  // Force layout so the enter transition runs.
+  // eslint-disable-next-line no-unused-expressions
+  toast.offsetHeight;
+  toast.classList.add("toast-enter");
+  requestAnimationFrame(() => { progress.style.transform = "scaleX(0)"; });
+  toast._timer = setTimeout(() => dismissToast(toast), duration);
+  return toast;
+}
 
 let activePreviewId = null;
 
@@ -237,6 +353,15 @@ chrome.runtime.onMessage.addListener((msg) => {
       if (entry && entry.id === activePreviewId) {
         if (payload.ok) hidePreview();
         else showPreviewError(payload.error || "Send failed");
+      }
+      // Surface every send result as a toast, even when no preview was open.
+      if (payload.ok) {
+        const mode = (entry && entry.mode) || payload.mode || "basic";
+        const label = mode === "cloze" ? "Cloze card" : mode === "image" ? "Image card" : "Card";
+        const deck = (entry && entry.deck) || "Anki";
+        showToast({ tone: "ok", title: `${label} sent`, message: deck ? `Added to ${deck}.` : "Added to Anki.", noteId: payload.noteId });
+      } else if (payload && payload.error) {
+        showToast({ tone: "bad", title: "Send failed", message: payload.error });
       }
     }
   }
@@ -541,11 +666,22 @@ els.previewSend?.addEventListener("click", async () => {
     const reply = await chrome.runtime.sendMessage({ type, payload: { id: activePreviewId } });
     if (reply && reply.ok) {
       hidePreview();
+      const payload = reply.payload || {};
+      const entry = payload.entry || {};
+      const label = mode === "cloze" ? "Cloze card" : mode === "image" ? "Image card" : "Card";
+      const deck = entry.deck || "Anki";
+      showToast({ tone: "ok", title: `${label} sent`, message: deck ? `Added to ${deck}.` : "Added to Anki.", noteId: payload.noteId || null });
+      loadHistory();
+      loadSync();
     } else {
-      showPreviewError((reply && reply.error) || "Send failed");
+      const errMsg = (reply && reply.error) || "Send failed";
+      showPreviewError(errMsg);
+      showToast({ tone: "bad", title: "Send failed", message: errMsg });
     }
   } catch (err) {
-    showPreviewError(err && err.message ? err.message : "Send failed");
+    const errMsg = err && err.message ? err.message : "Send failed";
+    showPreviewError(errMsg);
+    showToast({ tone: "bad", title: "Send failed", message: errMsg });
   }
 });
 

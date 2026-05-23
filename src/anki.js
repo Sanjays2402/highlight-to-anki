@@ -537,6 +537,28 @@ export async function findDuplicates(args) {
 }
 
 /**
+ * Delete one or more notes (and their cards) from Anki via
+ * AnkiConnect. Used by the popup's toast Undo affordance so a card
+ * sent in error can be retracted with one click. Returns the array
+ * of ids that were submitted for deletion so the caller can confirm
+ * the operation against its own bookkeeping; AnkiConnect itself
+ * returns `null` on success.
+ *
+ * @param {Array<number|string>} noteIds
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<number[]>}
+ */
+export async function deleteNotes(noteIds, opts = {}) {
+  const list = Array.isArray(noteIds) ? noteIds : [];
+  const ids = list
+    .map((n) => (typeof n === "number" ? n : Number(n)))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!ids.length) return [];
+  await invoke("deleteNotes", { notes: ids }, opts);
+  return ids;
+}
+
+/**
  * Fetch the list of deck names from AnkiConnect.
  * @param {{ timeoutMs?: number, url?: string }=} opts
  * @returns {Promise<string[]>}

@@ -351,4 +351,21 @@ const dqEscape = buildDuplicateQuery({ deck: "My \"Quoted\" Deck", text: "line1\
 if (dqEscape.includes("\\")) { console.error("buildDuplicateQuery: should strip backslashes"); process.exit(1); }
 if (dqEscape.includes("\n")) { console.error("buildDuplicateQuery: should collapse newlines"); process.exit(1); }
 
+// Toast notifications + undo feature.
+if (!anki.includes("export async function deleteNotes")) {
+  console.error("src/anki.js must export deleteNotes"); process.exit(1);
+}
+if (!bg.includes("h2a:undo-last-send") || !bg.includes("ankiDeleteNotes")) {
+  console.error("background.js must handle h2a:undo-last-send via deleteNotes"); process.exit(1);
+}
+if (!popupHtml.includes("toast-stack")) {
+  console.error("popup.html must include the toast-stack container"); process.exit(1);
+}
+if (!popupJs.includes("showToast") || !popupJs.includes("toast-undo") || !popupJs.includes("h2a:undo-last-send")) {
+  console.error("popup.js must wire showToast + Undo via h2a:undo-last-send"); process.exit(1);
+}
+if (!popupCss.includes(".toast") || !popupCss.includes(".toast-undo")) {
+  console.error("popup.css must style .toast and .toast-undo"); process.exit(1);
+}
+
 console.log("\u2713 smoke ok");

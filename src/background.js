@@ -15,6 +15,7 @@ import {
   addNote as ankiAddNote,
   addClozeNote as ankiAddClozeNote,
   addImageNote as ankiAddImageNote,
+  deleteNotes as ankiDeleteNotes,
   findDuplicates as ankiFindDuplicates,
   buildCardFields,
   buildClozeFields,
@@ -1006,6 +1007,38 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           checkedAt: new Date().toISOString(),
         },
       });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:undo-last-send") {
+    (async () => {
+      const payload = msg.payload || {};
+      const noteId = typeof payload.noteId === "number" ? payload.noteId : Number(payload.noteId);
+      if (!Number.isFinite(noteId) || noteId <= 0) {
+        sendResponse({ ok: false, error: "missing noteId" });
+        return;
+      }
+      try {
+        await ankiDeleteNotes([noteId]);
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+        return;
+      }
+      // Drop the matching row from history so the UI reflects the undo.
+      try {
+        const store = await chrome.storage.local.get(HISTORY_KEY);
+        const list = Array.isArray(store[HISTORY_KEY]) ? store[HISTORY_KEY] : [];
+        const next = list.filter((row) => row && row.noteId !== noteId);
+        if (next.length !== list.length) {
+          await chrome.storage.local.set({ [HISTORY_KEY]: next });
+          try {
+            await chrome.runtime.sendMessage({ type: "h2a:history-updated", payload: { undoneNoteId: noteId } });
+          } catch (_) { /* no popup open */ }
+        }
+      } catch (err) {
+        console.warn(TAG, "undo: history cleanup failed:", err && err.message);
+      }
+      sendResponse({ ok: true, payload: { noteId } });
     })();
     return true;
   }
