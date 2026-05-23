@@ -202,4 +202,14 @@ if (!optJs.includes("fieldTemplates") || !optJs.includes("renderTemplates") || !
   console.error("options.js must render and persist fieldTemplates"); process.exit(1);
 }
 
+if (!bg.includes("h2a:sync-status")) {
+  console.error("background.js must handle h2a:sync-status"); process.exit(1);
+}
+if (!popupHtml.includes("sync-pill") || !popupHtml.includes("sync-card") || !popupHtml.includes("Sync")) {
+  console.error("popup.html must render a Sync status card"); process.exit(1);
+}
+if (!popupJs.includes("h2a:sync-status") || !popupJs.includes("renderSync")) {
+  console.error("popup.js must render sync status via h2a:sync-status"); process.exit(1);
+}
+
 console.log("\u2713 smoke ok");

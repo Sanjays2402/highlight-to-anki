@@ -30,6 +30,13 @@ const els = {
   recentEmpty: document.getElementById("recent-empty"),
   recentList: document.getElementById("recent-list"),
   recentClear: document.getElementById("recent-clear"),
+  syncPill: document.getElementById("sync-pill"),
+  syncStatusText: document.getElementById("sync-status-text"),
+  syncInflight: document.getElementById("sync-inflight"),
+  syncLast: document.getElementById("sync-last"),
+  syncTotal: document.getElementById("sync-total"),
+  syncErrorRow: document.getElementById("sync-error-row"),
+  syncError: document.getElementById("sync-error"),
 };
 
 function setPill(state, label) {
@@ -196,9 +203,14 @@ els.batchSend?.addEventListener("click", sendBatch);
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === "h2a:batch-updated") {
     loadBatch();
+    loadSync();
   }
   if (msg && (msg.type === "h2a:history-updated" || msg.type === "h2a:capture-sent")) {
     loadHistory();
+    loadSync();
+  }
+  if (msg && msg.type === "h2a:capture-staged") {
+    loadSync();
   }
 });
 
@@ -312,6 +324,34 @@ async function clearHistory() {
 
 els.recentClear?.addEventListener("click", clearHistory);
 
+/** Render the sync indicator card. */
+function renderSync(s) {
+  const state = (s && s.state) || "idle";
+  const labels = { idle: "Idle", syncing: "Syncing…", synced: "Synced", error: "Error" };
+  if (els.syncPill) els.syncPill.dataset.state = state === "syncing" ? "checking" : state === "synced" ? "ok" : state === "error" ? "bad" : "idle";
+  if (els.syncStatusText) els.syncStatusText.textContent = labels[state] || "Idle";
+  if (els.syncInflight) els.syncInflight.textContent = String((s && s.inFlight) || 0);
+  if (els.syncTotal) els.syncTotal.textContent = String((s && s.totalSent) || 0);
+  if (els.syncLast) els.syncLast.textContent = s && s.lastSyncAt ? `${fmtRelative(s.lastSyncAt)} · ${fmtTime(s.lastSyncAt)}` : "—";
+  if (els.syncErrorRow && els.syncError) {
+    if (s && s.lastError && state === "error") {
+      els.syncError.textContent = s.lastError;
+      els.syncErrorRow.hidden = false;
+    } else {
+      els.syncErrorRow.hidden = true;
+    }
+  }
+}
+
+async function loadSync() {
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:sync-status" });
+    if (reply && reply.ok) renderSync(reply.payload || {});
+  } catch (err) {
+    console.warn(TAG, "sync status failed:", err);
+  }
+}
+
 // Match system theme for the first paint.
 const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
 document.body.dataset.theme = prefersLight ? "light" : "dark";
@@ -319,3 +359,8 @@ document.body.dataset.theme = prefersLight ? "light" : "dark";
 checkHealth();
 loadBatch();
 loadHistory();
+loadSync();
+
+// Light polling while popup is open so in-flight sends animate without push.
+const syncPoll = setInterval(loadSync, 2500);
+window.addEventListener("unload", () => clearInterval(syncPoll));

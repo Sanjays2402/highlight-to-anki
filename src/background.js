@@ -868,6 +868,38 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
     return true;
   }
+  if (msg.type === "h2a:sync-status") {
+    (async () => {
+      const store = await chrome.storage.local.get([PENDING_KEY, HISTORY_KEY, BATCH_KEY]);
+      const pending = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+      const history = Array.isArray(store[HISTORY_KEY]) ? store[HISTORY_KEY] : [];
+      const batch = Array.isArray(store[BATCH_KEY]) ? store[BATCH_KEY] : [];
+      const inFlight = pending.filter((e) => e && e.status === "sending").length;
+      const failed = pending
+        .filter((e) => e && e.status === "failed" && e.error)
+        .sort((a, b) => String(b.capturedAt || "").localeCompare(String(a.capturedAt || "")))[0] || null;
+      const lastSent = history[0] || null;
+      const lastSyncAt = lastSent ? lastSent.sentAt : null;
+      const lastError = failed ? failed.error : null;
+      let state = "idle";
+      if (inFlight > 0) state = "syncing";
+      else if (lastError && (!lastSyncAt || (failed && String(failed.capturedAt || "") >= String(lastSyncAt)))) state = "error";
+      else if (lastSyncAt) state = "synced";
+      sendResponse({
+        ok: true,
+        payload: {
+          state,
+          inFlight,
+          queued: batch.length,
+          totalSent: history.length,
+          lastSyncAt,
+          lastError,
+          checkedAt: new Date().toISOString(),
+        },
+      });
+    })();
+    return true;
+  }
   if (msg.type === "h2a:list-history") {
     chrome.storage.local.get(HISTORY_KEY).then((store) => {
       sendResponse({ ok: true, payload: store[HISTORY_KEY] || [] });

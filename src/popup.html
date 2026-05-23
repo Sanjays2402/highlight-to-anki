@@ -65,6 +65,34 @@
       </div>
     </section>
 
+    <section class="card glass" id="sync-card" aria-live="polite">
+      <div class="card-head">
+        <span class="card-label">Sync</span>
+        <span class="pill pill-checking" id="sync-pill" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text" id="sync-status-text">Idle</span>
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="kv">
+          <span class="k">In flight</span>
+          <span class="v" id="sync-inflight">0</span>
+        </div>
+        <div class="kv">
+          <span class="k">Last sync</span>
+          <span class="v" id="sync-last">—</span>
+        </div>
+        <div class="kv">
+          <span class="k">Sent total</span>
+          <span class="v" id="sync-total">0</span>
+        </div>
+        <div class="kv kv-error" id="sync-error-row" hidden>
+          <span class="k">Last error</span>
+          <span class="v" id="sync-error">—</span>
+        </div>
+      </div>
+    </section>
+
     <section class="card glass" id="batch-card" aria-live="polite">
       <div class="card-head">
         <span class="card-label">Batch</span>
