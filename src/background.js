@@ -22,6 +22,8 @@ import {
   buildImageCardFields,
   buildReverseCardFields,
   hostnameTag,
+  detectLanguage,
+  languageTag,
   resolveFieldNames,
   resolveSiteDeck,
   buildAnkiConnectUrl,
@@ -336,9 +338,10 @@ async function sendBatch() {
     if (!entry || !entry.text) continue;
     const { front, back } = buildCardFields(entry);
     const siteTag = hostnameTag(entry.hostname);
-    const tags = siteTag
-      ? ["highlight-to-anki", "batch", siteTag]
-      : ["highlight-to-anki", "batch"];
+    const langTag = languageTag(detectLanguage(entry.paragraph || entry.text));
+    const tags = ["highlight-to-anki", "batch"];
+    if (siteTag) tags.push(siteTag);
+    if (langTag) tags.push(langTag);
     const batchDeck = resolveSiteDeck(siteRules, entry.hostname) || settings.defaultDeck;
     try {
       const batchFields = resolveFieldNames(settings, batchDeck);
@@ -556,7 +559,10 @@ async function sendCaptureToAnki(entry) {
   const { front, back } = buildCardFields(entry);
   await patchPending(entry.id, { status: "sending", error: null });
   const siteTag = hostnameTag(entry.hostname);
-  const tags = siteTag ? ["highlight-to-anki", siteTag] : ["highlight-to-anki"];
+  const langTag = languageTag(detectLanguage(entry.paragraph || entry.text));
+  const tags = ["highlight-to-anki"];
+  if (siteTag) tags.push(siteTag);
+  if (langTag) tags.push(langTag);
   const targetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const fields = resolveFieldNames(settings, targetDeck);
   try {
@@ -611,9 +617,8 @@ async function sendCaptureAsImage(entry) {
   const { back } = buildImageCardFields(entry);
   await patchPending(entry.id, { status: "sending", mode: "image", error: null });
   const siteTag = hostnameTag(entry.hostname);
-  const tags = siteTag
-    ? ["highlight-to-anki", "image", siteTag]
-    : ["highlight-to-anki", "image"];
+  const tags = ["highlight-to-anki", "image"];
+  if (siteTag) tags.push(siteTag);
   const imgTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const imgFields = resolveFieldNames(settings, imgTargetDeck);
   try {
@@ -673,9 +678,10 @@ async function sendCaptureAsCloze(entry) {
   const { text, extra } = buildClozeFields(entry);
   await patchPending(entry.id, { status: "sending", mode: "cloze", error: null });
   const siteTag = hostnameTag(entry.hostname);
-  const tags = siteTag
-    ? ["highlight-to-anki", "cloze", siteTag]
-    : ["highlight-to-anki", "cloze"];
+  const langTag = languageTag(detectLanguage(entry.paragraph || entry.text));
+  const tags = ["highlight-to-anki", "cloze"];
+  if (siteTag) tags.push(siteTag);
+  if (langTag) tags.push(langTag);
   const clozeTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const clozeFields = resolveFieldNames(settings, clozeTargetDeck);
   try {
@@ -735,9 +741,10 @@ async function sendCaptureAsReverse(entry) {
   const { front, back } = buildReverseCardFields(entry);
   await patchPending(entry.id, { status: "sending", mode: "reverse", error: null });
   const siteTag = hostnameTag(entry.hostname);
-  const tags = siteTag
-    ? ["highlight-to-anki", "reverse", siteTag]
-    : ["highlight-to-anki", "reverse"];
+  const langTag = languageTag(detectLanguage(entry.paragraph || entry.text));
+  const tags = ["highlight-to-anki", "reverse"];
+  if (siteTag) tags.push(siteTag);
+  if (langTag) tags.push(langTag);
   const revTargetDeck = resolveSiteDeck(settings.siteRules, entry.hostname) || settings.defaultDeck;
   const revFields = resolveFieldNames(settings, revTargetDeck);
   try {
@@ -822,6 +829,8 @@ async function sendEditedCapture(edits) {
         const t = ["highlight-to-anki"];
         const siteTag = hostnameTag(entry.hostname);
         if (siteTag) t.push(siteTag);
+        const langTag = languageTag(detectLanguage(entry.paragraph || entry.text || edits.text || edits.front));
+        if (langTag) t.push(langTag);
         if (mode === "cloze") t.push("cloze");
         return t;
       })();

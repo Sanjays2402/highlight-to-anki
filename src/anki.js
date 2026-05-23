@@ -155,6 +155,141 @@ export function hostnameTag(hostname) {
   return `site:${h}`;
 }
 
+// ---------------------------------------------------------------------------
+// Language detection
+// ---------------------------------------------------------------------------
+
+// Stopword frequency tables for the Latin-alphabet languages we
+// distinguish. Kept short on purpose: these are the highest-signal
+// function words in each tongue and they're enough to disambiguate
+// short selections (a paragraph or two) without pulling in a real NLP
+// dependency. Lower-case, deduplicated, no diacritics required.
+const LATIN_STOPWORDS = {
+  en: ["the","and","that","have","for","not","with","you","this","but","his","from","they","she","will","would","there","their","what","about","which","when","your","can","said","each","been","were","are","was","has","had"],
+  es: ["que","de","no","la","el","en","y","a","los","se","del","las","un","por","con","una","su","para","es","al","lo","como","mas","pero","sus","le","ya","o","este","si","porque","esta","entre","cuando","muy","sin","sobre","tambien"],
+  fr: ["le","de","un","et","etre","avoir","que","pour","dans","ce","il","qui","ne","sur","se","pas","plus","par","avec","tout","faire","son","mais","ou","comme","nous","vous","leur","bien","sans","sous","meme","deja","alors","des","les","une","est","sont","cette","aussi"],
+  de: ["der","die","und","in","den","von","zu","das","mit","sich","des","auf","fur","ist","im","dem","nicht","ein","eine","als","auch","es","an","werden","aus","er","hat","dass","sie","nach","wird","bei","einer","um","am","sind","noch","wie","einem","uber"],
+  it: ["di","e","il","la","che","un","per","non","in","una","sono","si","con","come","le","piu","ma","se","lo","ho","ha","al","da","alla","questo","questa","loro","anche","quando","tutti","essere","fare","degli","della","dei","delle"],
+  pt: ["de","a","o","que","e","do","da","em","um","para","com","nao","uma","os","no","se","na","por","mais","as","dos","como","mas","foi","ao","ele","das","tem","a","seu","sua","ou","quando","muito","nos","ja","eu"],
+  nl: ["de","en","het","van","een","dat","is","in","op","te","voor","met","die","zijn","niet","aan","er","als","maar","ook","wij","door","deze","wel","zou","naar","of","uit","bij","nog"],
+};
+
+// Build a fast lookup once at module load.
+const LATIN_STOPWORD_SETS = (() => {
+  const out = {};
+  for (const code of Object.keys(LATIN_STOPWORDS)) {
+    out[code] = new Set(LATIN_STOPWORDS[code]);
+  }
+  return out;
+})();
+
+/**
+ * Strip combining diacritical marks so frequency lookups can ignore
+ * accents (`prèsentes` → `presentes`). NFD then drop U+0300-U+036F.
+ * @param {string} s
+ * @returns {string}
+ */
+function stripDiacritics(s) {
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/**
+ * Detect the dominant natural language of a text selection. Returns
+ * an ISO 639-1 code (`"en"`, `"es"`, `"ja"`, …) or `null` when the
+ * input is empty or no script signal can be extracted. The detector
+ * is deliberately small and fully deterministic:
+ *
+ *   1. **Script-first.** Walk the codepoints once and count how many
+ *      fall into each Unicode block we care about (CJK ideographs,
+ *      Hiragana, Katakana, Hangul, Cyrillic, Arabic, Hebrew,
+ *      Devanagari, Greek, Thai). The script with the most hits wins
+ *      outright when it accounts for at least 30% of letter chars.
+ *      Japanese is preferred over Chinese when *any* Hiragana or
+ *      Katakana appears, since CJK ideographs are shared between the
+ *      two and kana are the distinguishing signal.
+ *   2. **Latin fallback.** When the script signal is Latin we score
+ *      the text against a tiny stopword table (en / es / fr / de /
+ *      it / pt / nl) and return the language with the highest match
+ *      count. Ties resolve in favour of English so we don't flap
+ *      between near-matches on three-word selections.
+ *
+ * @param {string|undefined|null} text
+ * @returns {string|null}
+ */
+export function detectLanguage(text) {
+  if (text == null) return null;
+  const raw = String(text);
+  if (!raw.trim()) return null;
+  // Script tallies.
+  let han = 0, hira = 0, kata = 0, hangul = 0;
+  let cyrillic = 0, arabic = 0, hebrew = 0, devanagari = 0;
+  let greek = 0, thai = 0, latin = 0;
+  for (const ch of raw) {
+    const cp = ch.codePointAt(0);
+    if (cp == null) continue;
+    if ((cp >= 0x3040 && cp <= 0x309f)) hira++;
+    else if ((cp >= 0x30a0 && cp <= 0x30ff) || (cp >= 0x31f0 && cp <= 0x31ff)) kata++;
+    else if ((cp >= 0xac00 && cp <= 0xd7af) || (cp >= 0x1100 && cp <= 0x11ff) || (cp >= 0x3130 && cp <= 0x318f)) hangul++;
+    else if ((cp >= 0x4e00 && cp <= 0x9fff) || (cp >= 0x3400 && cp <= 0x4dbf) || (cp >= 0xf900 && cp <= 0xfaff)) han++;
+    else if (cp >= 0x0400 && cp <= 0x04ff) cyrillic++;
+    else if (cp >= 0x0600 && cp <= 0x06ff) arabic++;
+    else if (cp >= 0x0590 && cp <= 0x05ff) hebrew++;
+    else if (cp >= 0x0900 && cp <= 0x097f) devanagari++;
+    else if (cp >= 0x0370 && cp <= 0x03ff) greek++;
+    else if (cp >= 0x0e00 && cp <= 0x0e7f) thai++;
+    else if ((cp >= 0x0041 && cp <= 0x005a) || (cp >= 0x0061 && cp <= 0x007a) || (cp >= 0x00c0 && cp <= 0x024f)) latin++;
+  }
+  const letters = han + hira + kata + hangul + cyrillic + arabic + hebrew + devanagari + greek + thai + latin;
+  if (letters === 0) return null;
+  // Japanese wins as soon as kana is present, even if CJK ideographs
+  // dominate the count — kana are the disambiguator.
+  if (hira + kata >= 1 && (hira + kata + han) / letters >= 0.3) return "ja";
+  if (hangul / letters >= 0.3) return "ko";
+  if (han / letters >= 0.3) return "zh";
+  if (arabic / letters >= 0.3) return "ar";
+  if (hebrew / letters >= 0.3) return "he";
+  if (devanagari / letters >= 0.3) return "hi";
+  if (cyrillic / letters >= 0.3) return "ru";
+  if (greek / letters >= 0.3) return "el";
+  if (thai / letters >= 0.3) return "th";
+  if (latin / letters < 0.3) return null;
+  // Latin: score against tiny stopword frequency tables.
+  const tokens = stripDiacritics(raw.toLowerCase()).match(/[a-z]+/g) || [];
+  if (!tokens.length) return null;
+  const scores = { en: 0, es: 0, fr: 0, de: 0, it: 0, pt: 0, nl: 0 };
+  for (const tok of tokens) {
+    for (const code of Object.keys(scores)) {
+      if (LATIN_STOPWORD_SETS[code].has(tok)) scores[code]++;
+    }
+  }
+  let best = "en", bestScore = -1;
+  // Iterate in a stable order so ties resolve deterministically; en
+  // first so it wins on ties (most highlight-to-anki users read EN).
+  for (const code of ["en","es","fr","de","it","pt","nl"]) {
+    if (scores[code] > bestScore) { best = code; bestScore = scores[code]; }
+  }
+  // If nothing matched at all, only assert English when we have a
+  // meaningful number of Latin tokens; otherwise return null so the
+  // caller can skip the tag.
+  if (bestScore === 0 && tokens.length < 4) return null;
+  return best;
+}
+
+/**
+ * Render a language code as an Anki tag. Returns `null` when the
+ * input is missing so callers can `if (tag) tags.push(tag)` without
+ * branching twice.
+ *
+ * @param {string|undefined|null} code
+ * @returns {string|null}
+ */
+export function languageTag(code) {
+  if (!code) return null;
+  const c = String(code).trim().toLowerCase();
+  if (!/^[a-z]{2,3}$/.test(c)) return null;
+  return `lang:${c}`;
+}
+
 /**
  * Render a small, safe subset of inline Markdown into HTML. The
  * input MUST already be HTML-escaped (e.g. via {@link escapeHtml}); we

@@ -29,7 +29,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Onboarding flow: first-run tutorial with liquid-glass cards
 - [x] Card statistics dashboard: counts by deck/tag/day in popup
 - [x] Reverse card mode: generate front/back swapped cards on demand
-- [ ] Multi-language detection and auto-tag by detected language
+- [x] Multi-language detection and auto-tag by detected language
 - [ ] Custom CSS injection for Anki card styling per deck
 - [ ] Selection context: capture surrounding sentence as additional field
 - [ ] Pinned snippets: save selections for batch-send later

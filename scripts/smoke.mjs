@@ -409,4 +409,21 @@ if (!optCss.includes(".connection-grid") || !optCss.includes(".connection-url"))
   console.error("options.css must style the connection card (connection-grid + connection-url)"); process.exit(1);
 }
 
+if (!bg.includes("languageTag") || !bg.includes("detectLanguage")) {
+  console.error("background.js must import detectLanguage + languageTag to auto-tag captures by language"); process.exit(1);
+}
+const { detectLanguage, languageTag } = await import("../src/anki.js");
+if (detectLanguage("") !== null || detectLanguage(null) !== null) { console.error("detectLanguage: empty input should return null"); process.exit(1); }
+if (detectLanguage("The quick brown fox jumps over the lazy dog and they all have fun.") !== "en") { console.error("detectLanguage: should detect English"); process.exit(1); }
+if (detectLanguage("El gato negro corre rapido por la calle con su amigo.") !== "es") { console.error("detectLanguage: should detect Spanish"); process.exit(1); }
+if (detectLanguage("Le chat noir court dans la rue avec son ami.") !== "fr") { console.error("detectLanguage: should detect French"); process.exit(1); }
+if (detectLanguage("Der Hund l\u00e4uft mit dem Mann in den Park und ist gl\u00fccklich.") !== "de") { console.error("detectLanguage: should detect German"); process.exit(1); }
+if (detectLanguage("\u3053\u308c\u306f\u65e5\u672c\u8a9e\u306e\u30c6\u30b9\u30c8\u3067\u3059") !== "ja") { console.error("detectLanguage: should detect Japanese via kana"); process.exit(1); }
+if (detectLanguage("\u4eca\u5929\u5929\u6c14\u5f88\u597d\u6211\u4eec\u4e00\u8d77\u53bb\u516c\u56ed") !== "zh") { console.error("detectLanguage: should detect Chinese"); process.exit(1); }
+if (detectLanguage("\uc548\ub155\ud558\uc138\uc694 \uc138\uacc4") !== "ko") { console.error("detectLanguage: should detect Korean"); process.exit(1); }
+if (detectLanguage("\u041f\u0440\u0438\u0432\u0435\u0442 \u043c\u0438\u0440 \u043a\u0430\u043a \u0434\u0435\u043b\u0430") !== "ru") { console.error("detectLanguage: should detect Russian"); process.exit(1); }
+if (languageTag("en") !== "lang:en") { console.error("languageTag: should prefix lang:"); process.exit(1); }
+if (languageTag("") !== null || languageTag(null) !== null || languageTag("123") !== null) { console.error("languageTag: invalid input should return null"); process.exit(1); }
+if (languageTag("  JA  ") !== "lang:ja") { console.error("languageTag: should trim + lowercase"); process.exit(1); }
+
 console.log("\u2713 smoke ok");
