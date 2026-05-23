@@ -169,4 +169,37 @@ if (!bg.includes("openEditorWindow")) {
   console.error("background.js must define openEditorWindow to launch the editor dialog"); process.exit(1);
 }
 
+if (!anki.includes("export function resolveFieldNames")) {
+  console.error("src/anki.js must export resolveFieldNames"); process.exit(1);
+}
+const { resolveFieldNames } = await import("../src/anki.js");
+const defaultFields = resolveFieldNames(null, null);
+if (defaultFields.frontField !== "Front" || defaultFields.backField !== "Back" || defaultFields.textField !== "Text" || defaultFields.extraField !== "Back Extra") {
+  console.error("resolveFieldNames: defaults incorrect"); process.exit(1);
+}
+const tplResolved = resolveFieldNames({ fieldTemplates: { Vocab: { frontField: "Word", backField: "Definition" } } }, "Vocab");
+if (tplResolved.frontField !== "Word" || tplResolved.backField !== "Definition" || tplResolved.textField !== "Text") {
+  console.error("resolveFieldNames: per-deck override not applied"); process.exit(1);
+}
+const tplBlanks = resolveFieldNames({ fieldTemplates: { Vocab: { frontField: "   " } } }, "Vocab");
+if (tplBlanks.frontField !== "Front") { console.error("resolveFieldNames: blank override should fall back"); process.exit(1); }
+const tplMissing = resolveFieldNames({ fieldTemplates: { Vocab: { frontField: "Word" } } }, "Other");
+if (tplMissing.frontField !== "Front") { console.error("resolveFieldNames: non-matching deck should fall back"); process.exit(1); }
+
+if (!bg.includes("resolveFieldNames")) {
+  console.error("background.js must use resolveFieldNames to apply per-deck field templates"); process.exit(1);
+}
+if (!bg.includes("fieldTemplates")) {
+  console.error("background.js must persist fieldTemplates in settings"); process.exit(1);
+}
+if (!bg.includes("sanitiseTemplates")) {
+  console.error("background.js must sanitise field templates on save"); process.exit(1);
+}
+if (!optHtml.includes("templates-list") || !optHtml.includes("add-template-btn") || !optHtml.includes("Field templates")) {
+  console.error("options.html must render the field-templates section"); process.exit(1);
+}
+if (!optJs.includes("fieldTemplates") || !optJs.includes("renderTemplates") || !optJs.includes("templatesToMap")) {
+  console.error("options.js must render and persist fieldTemplates"); process.exit(1);
+}
+
 console.log("\u2713 smoke ok");

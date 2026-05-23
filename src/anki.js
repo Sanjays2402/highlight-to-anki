@@ -99,6 +99,35 @@ export function hostnameTag(hostname) {
 }
 
 /**
+ * Resolve the AnkiConnect field-name set for a given deck. Each user
+ * can register per-deck overrides in settings under `fieldTemplates`,
+ * keyed by deck name; this lets, for example, a Vocabulary deck map
+ * the selection to a `Word`/`Definition` pair instead of the default
+ * `Front`/`Back`. Returns a fully-populated object so callers can
+ * pass the result straight to {@link addNote}/{@link addClozeNote}.
+ *
+ * @param {{ fieldTemplates?: Record<string, {frontField?:string, backField?:string, textField?:string, extraField?:string}> }|undefined|null} settings
+ * @param {string|undefined|null} deckName
+ * @returns {{ frontField: string, backField: string, textField: string, extraField: string }}
+ */
+export function resolveFieldNames(settings, deckName) {
+  const defaults = { frontField: "Front", backField: "Back", textField: "Text", extraField: "Back Extra" };
+  if (!settings || !settings.fieldTemplates || !deckName) return defaults;
+  const tpl = settings.fieldTemplates[deckName];
+  if (!tpl || typeof tpl !== "object") return defaults;
+  const pick = (val, fallback) => {
+    const s = typeof val === "string" ? val.trim() : "";
+    return s || fallback;
+  };
+  return {
+    frontField: pick(tpl.frontField, defaults.frontField),
+    backField: pick(tpl.backField, defaults.backField),
+    textField: pick(tpl.textField, defaults.textField),
+    extraField: pick(tpl.extraField, defaults.extraField),
+  };
+}
+
+/**
  * Build the `{ front, back }` field payload for a basic note from a
  * capture snapshot. Front is the raw selection text; back is the
  * surrounding paragraph (when available) plus a linked citation back
