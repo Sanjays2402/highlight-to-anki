@@ -12,7 +12,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Image capture: select image → add as front
 - [x] Batch mode: multi-select on page, one card per selection
 - [x] Recent cards history in popup
-- [ ] Edit-before-send dialog
+- [x] Edit-before-send dialog
 - [ ] Field templates per deck
 - [ ] Sync status indicator
 - [ ] Liquid-glass popup UI

@@ -141,4 +141,32 @@ if (!popupJs.includes("recent-item")) {
   console.error("popup.js must render .recent-item rows for history"); process.exit(1);
 }
 
+// Edit-before-send dialog feature.
+for (const p of ["src/editor.html", "src/editor.js", "src/editor.css"]) {
+  if (!fs.existsSync(p)) { console.error("missing file:", p); process.exit(1); }
+}
+const editorHtml = fs.readFileSync("src/editor.html", "utf8");
+if (!editorHtml.includes("front-input") || !editorHtml.includes("back-input") || !editorHtml.includes("cloze-input")) {
+  console.error("editor.html must render front, back, and cloze inputs"); process.exit(1);
+}
+if (!editorHtml.includes("send-btn") || !editorHtml.includes("cancel-btn")) {
+  console.error("editor.html must render send and cancel buttons"); process.exit(1);
+}
+const editorJs = fs.readFileSync("src/editor.js", "utf8");
+if (!editorJs.includes("h2a:get-pending-entry") || !editorJs.includes("h2a:send-edited-capture")) {
+  console.error("editor.js must use get-pending-entry/send-edited-capture messages"); process.exit(1);
+}
+if (!bg.includes("Edit & Send to Anki")) {
+  console.error("background.js must register 'Edit & Send to Anki…' context menu"); process.exit(1);
+}
+if (!bg.includes("h2a:send-edited-capture") || !bg.includes("sendEditedCapture")) {
+  console.error("background.js must wire h2a:send-edited-capture to sendEditedCapture"); process.exit(1);
+}
+if (!bg.includes("h2a:get-pending-entry")) {
+  console.error("background.js must handle h2a:get-pending-entry for the editor"); process.exit(1);
+}
+if (!bg.includes("openEditorWindow")) {
+  console.error("background.js must define openEditorWindow to launch the editor dialog"); process.exit(1);
+}
+
 console.log("\u2713 smoke ok");

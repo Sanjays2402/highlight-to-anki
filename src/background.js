@@ -26,6 +26,7 @@ const MENU_ID = "h2a-send-to-anki";
 const MENU_ID_CLOZE = "h2a-send-to-anki-cloze";
 const MENU_ID_IMAGE = "h2a-send-image-to-anki";
 const MENU_ID_BATCH = "h2a-add-to-batch";
+const MENU_ID_EDIT = "h2a-edit-and-send";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
 const BATCH_KEY = "h2a:batch";
@@ -133,6 +134,17 @@ function ensureMenu() {
       () => {
         const err = chrome.runtime.lastError;
         if (err) console.warn(TAG, "image menu create error:", err.message);
+      },
+    );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_EDIT,
+        title: "Edit & Send to Anki…",
+        contexts: ["selection"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "edit menu create error:", err.message);
       },
     );
     chrome.contextMenus.create(
@@ -530,17 +542,125 @@ async function sendCaptureAsCloze(entry) {
   }
 }
 
+/**
+ * Open the edit-before-send dialog as a small popup window, scoped
+ * to a single staged capture id. We use chrome.windows.create with
+ * type: 'popup' so it floats free of the browser tabstrip and feels
+ * like a true dialog, matching the popup's liquid-glass chrome.
+ *
+ * @param {string} captureId staged-capture id from {@link stagePending}
+ */
+async function openEditorWindow(captureId) {
+  if (!captureId) return;
+  const url = chrome.runtime.getURL(`src/editor.html#id=${encodeURIComponent(captureId)}`);
+  try {
+    if (chrome.windows && chrome.windows.create) {
+      await chrome.windows.create({ url, type: "popup", width: 520, height: 720, focused: true });
+      return;
+    }
+  } catch (err) {
+    console.warn(TAG, "openEditorWindow windows.create failed:", err && err.message);
+  }
+  try {
+    await chrome.tabs.create({ url });
+  } catch (err) {
+    console.warn(TAG, "openEditorWindow tabs.create failed:", err && err.message);
+  }
+}
+
+/**
+ * Send a user-edited capture to Anki. Unlike {@link sendCaptureToAnki},
+ * the front/back/tags/deck/model arrive directly from the editor — we
+ * trust the user's edits and skip the template builders. The staged
+ * pending entry is patched in place so history and toasts still work.
+ *
+ * @param {{ id: string, mode: string, deck: string, model: string, tags: string[], front?: string, back?: string, text?: string, extra?: string }} edits
+ * @returns {Promise<{ ok: boolean, noteId: number|null, error: string|null, entry: object|null }>}
+ */
+async function sendEditedCapture(edits) {
+  if (!edits || !edits.id) {
+    return { ok: false, noteId: null, error: "missing capture id", entry: null };
+  }
+  const store = await chrome.storage.local.get(PENDING_KEY);
+  const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+  const entry = list.find((e) => e && e.id === edits.id);
+  if (!entry) return { ok: false, noteId: null, error: "capture not found", entry: null };
+  const deckName = (edits.deck || "").trim();
+  const modelName = (edits.model || "").trim();
+  if (!deckName || !modelName) {
+    return { ok: false, noteId: null, error: "Deck and note type are required", entry };
+  }
+  const mode = edits.mode === "cloze" ? "cloze" : "basic";
+  const baseTags = Array.isArray(edits.tags) && edits.tags.length
+    ? edits.tags
+    : (() => {
+        const t = ["highlight-to-anki"];
+        const siteTag = hostnameTag(entry.hostname);
+        if (siteTag) t.push(siteTag);
+        if (mode === "cloze") t.push("cloze");
+        return t;
+      })();
+  await patchPending(entry.id, { status: "sending", mode, error: null });
+  try {
+    let noteId;
+    if (mode === "cloze") {
+      noteId = await ankiAddClozeNote({
+        deckName,
+        modelName,
+        text: edits.text || "",
+        extra: edits.extra || "",
+        tags: baseTags,
+      });
+    } else {
+      noteId = await ankiAddNote({
+        deckName,
+        modelName,
+        front: edits.front || "",
+        back: edits.back || "",
+        tags: baseTags,
+      });
+    }
+    const patched = await patchPending(entry.id, {
+      status: "sent",
+      mode,
+      noteId,
+      error: null,
+      sentAt: new Date().toISOString(),
+    });
+    await appendHistory(patched || { ...entry, noteId, mode }, { mode, noteId, deck: deckName });
+    try {
+      await chrome.runtime.sendMessage({ type: "h2a:capture-sent", payload: { ok: true, noteId, error: null, entry: patched || entry } });
+    } catch (_) { /* no popup open */ }
+    return { ok: true, noteId, error: null, entry: patched || entry };
+  } catch (err) {
+    const msg = err && err.message ? err.message : String(err);
+    const patched = await patchPending(entry.id, { status: "failed", mode, error: msg });
+    return { ok: false, noteId: null, error: msg, entry: patched || entry };
+  }
+}
+
 if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const isBasic = info.menuItemId === MENU_ID;
     const isCloze = info.menuItemId === MENU_ID_CLOZE;
     const isImage = info.menuItemId === MENU_ID_IMAGE;
     const isBatch = info.menuItemId === MENU_ID_BATCH;
-    if (!isBasic && !isCloze && !isImage && !isBatch) return;
+    const isEdit = info.menuItemId === MENU_ID_EDIT;
+    if (!isBasic && !isCloze && !isImage && !isBatch && !isEdit) return;
     if (!tab || tab.id == null) return;
     const capture = isImage
       ? captureFromImage(info, tab)
       : await requestCapture(tab.id, info.selectionText);
+    if (isEdit) {
+      const entry = await stagePending(capture);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
+      } catch (_) { /* no popup open */ }
+      if (entry) {
+        await openEditorWindow(entry.id);
+      }
+      return;
+    }
     if (isBatch) {
       const batchEntry = await addToBatch(capture);
       try {
@@ -674,6 +794,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const result = await sendCaptureAsImage(entry);
       sendResponse({ ok: result.ok, payload: result, error: result.error });
     })();
+    return true;
+  }
+  if (msg.type === "h2a:get-pending-entry") {
+    (async () => {
+      const id = msg.payload && msg.payload.id;
+      const store = await chrome.storage.local.get(PENDING_KEY);
+      const list = Array.isArray(store[PENDING_KEY]) ? store[PENDING_KEY] : [];
+      const entry = id ? list.find((e) => e && e.id === id) : null;
+      sendResponse({ ok: !!entry, payload: entry || null });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:open-editor") {
+    (async () => {
+      const id = msg.payload && msg.payload.id;
+      await openEditorWindow(id);
+      sendResponse({ ok: !!id });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:send-edited-capture") {
+    sendEditedCapture(msg.payload || {})
+      .then((result) => sendResponse({ ok: result.ok, payload: result, error: result.error }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
     return true;
   }
   if (msg.type === "h2a:list-history") {
