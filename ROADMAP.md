@@ -25,5 +25,5 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Export recent cards history to JSON
 - [x] Toast notifications for send success/failure with undo
 - [x] AnkiConnect connection settings (host/port) in options
-- [ ] Selection screenshot mode: capture region as card image
+- [x] Selection screenshot mode: capture region as card image
 - [ ] Onboarding flow: first-run tutorial with liquid-glass cards

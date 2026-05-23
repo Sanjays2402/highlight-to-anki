@@ -438,6 +438,17 @@ export async function addImageNote(args) {
   const backField = (args.backField || "Back").trim() || "Back";
   const filename = (args.filename && args.filename.trim()) || buildImageFilename(imageUrl);
   const tags = Array.isArray(args.tags) ? args.tags.filter((t) => typeof t === "string" && t.length) : [];
+  // AnkiConnect supports either `url` (http(s)) or `data` (base64) for
+  // picture attachments. Data URLs (used by screenshot captures) cannot
+  // be fetched server-side so we split them and ship the base64 payload
+  // directly.
+  let picture;
+  const dataMatch = /^data:(image\/[a-z0-9+.-]+);base64,(.+)$/i.exec(imageUrl);
+  if (dataMatch) {
+    picture = [{ data: dataMatch[2], filename, fields: [frontField] }];
+  } else {
+    picture = [{ url: imageUrl, filename, fields: [frontField] }];
+  }
   const params = {
     note: {
       deckName,
@@ -445,10 +456,10 @@ export async function addImageNote(args) {
       fields: { [frontField]: "", [backField]: args.back || "" },
       tags,
       options: { allowDuplicate: !!args.allowDuplicate },
-      picture: [{ url: imageUrl, filename, fields: [frontField] }],
+      picture,
     },
   };
-  const result = await invoke("addNote", params, { timeoutMs: args.timeoutMs ?? 10000, url: args.url });
+  const result = await invoke("addNote", params, { timeoutMs: args.timeoutMs ?? 15000, url: args.url });
   const id = typeof result === "number" ? result : Number(result);
   if (!Number.isFinite(id) || id <= 0) throw new Error("addImageNote: AnkiConnect returned no note id");
   return id;

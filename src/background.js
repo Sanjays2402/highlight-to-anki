@@ -36,6 +36,7 @@ const MENU_ID_CLOZE = "h2a-send-to-anki-cloze";
 const MENU_ID_IMAGE = "h2a-send-image-to-anki";
 const MENU_ID_BATCH = "h2a-add-to-batch";
 const MENU_ID_EDIT = "h2a-edit-and-send";
+const MENU_ID_SHOT = "h2a-screenshot-region";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
 const BATCH_KEY = "h2a:batch";
@@ -238,6 +239,17 @@ function ensureMenu() {
       () => {
         const err = chrome.runtime.lastError;
         if (err) console.warn(TAG, "edit menu create error:", err.message);
+      },
+    );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_SHOT,
+        title: "Screenshot Region to Anki…",
+        contexts: ["page", "selection", "frame", "image"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "shot menu create error:", err.message);
       },
     );
     chrome.contextMenus.create(
@@ -761,6 +773,117 @@ async function sendEditedCapture(edits) {
   }
 }
 
+/**
+ * Drive the selection-screenshot flow: inject the region overlay,
+ * capture the visible tab as a PNG, crop to the selected rectangle
+ * via OffscreenCanvas, stage the resulting data: URL as an image
+ * capture, and (if a default deck/model is configured) ship it to
+ * Anki straight away. Returns a payload describing what was staged
+ * and any broadcast envelope for the popup.
+ *
+ * @param {chrome.tabs.Tab} tab
+ * @returns {Promise<{ ok: boolean, broadcast?: object, error?: string }>}
+ */
+async function startScreenshotRegionFlow(tab) {
+  if (!tab || tab.id == null || !tab.windowId == null) return { ok: false, error: "no active tab" };
+  let regionReply;
+  try {
+    regionReply = await chrome.tabs.sendMessage(tab.id, { type: "h2a:start-region-capture" });
+  } catch (err) {
+    // Content script may not be injected on this page (e.g. chrome://);
+    // try to inject it on demand and retry once.
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["src/content.js"] });
+      regionReply = await chrome.tabs.sendMessage(tab.id, { type: "h2a:start-region-capture" });
+    } catch (err2) {
+      console.warn(TAG, "screenshot: cannot reach page:", err2 && err2.message);
+      return { ok: false, error: "page not scriptable" };
+    }
+  }
+  if (!regionReply || !regionReply.ok || !regionReply.payload) {
+    console.log(TAG, "screenshot: cancelled");
+    return { ok: false, error: "cancelled" };
+  }
+  const region = regionReply.payload;
+  let dataUrl;
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+  } catch (err) {
+    console.warn(TAG, "captureVisibleTab failed:", err && err.message);
+    return { ok: false, error: err && err.message ? err.message : "capture failed" };
+  }
+  let cropped;
+  try {
+    cropped = await cropScreenshotInWorker(dataUrl, region.rect, region.devicePixelRatio || 1);
+  } catch (err) {
+    console.warn(TAG, "crop failed:", err && err.message);
+    return { ok: false, error: err && err.message ? err.message : "crop failed" };
+  }
+  const capture = {
+    kind: "image",
+    text: "",
+    html: `<img src="${cropped}">`,
+    imageUrl: cropped,
+    url: region.url || tab.url || "",
+    title: region.title || tab.title || "screenshot",
+    hostname: region.hostname || safeHostname(region.url || tab.url || ""),
+    paragraph: "",
+    capturedAt: new Date().toISOString(),
+    source: "screenshot",
+  };
+  const entry = await stagePending(capture);
+  try {
+    await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
+  } catch (_) { /* no popup open */ }
+  if (!entry) return { ok: false, error: "stage failed" };
+  const settings = await loadSettings();
+  if (!settings.defaultDeck || !settings.defaultModel) {
+    console.log(TAG, "screenshot staged; needs default deck/model");
+    return { ok: true, broadcast: { type: "h2a:capture-staged", payload: entry } };
+  }
+  const result = await sendCaptureAsImage(entry);
+  if (result.ok) console.log(TAG, "screenshot sent", result.noteId);
+  else console.warn(TAG, "screenshot send failed:", result.error);
+  return { ok: result.ok, broadcast: { type: "h2a:capture-sent", payload: result }, error: result.error || undefined };
+}
+
+/**
+ * Crop a PNG data: URL to the given CSS-pixel rectangle using
+ * OffscreenCanvas (works inside a service worker since MV3 has no
+ * DOM). The rect coordinates are scaled by devicePixelRatio because
+ * captureVisibleTab returns the image in device pixels.
+ *
+ * @param {string} dataUrl
+ * @param {{ x:number, y:number, width:number, height:number }} rect
+ * @param {number} dpr
+ * @returns {Promise<string>} PNG data URL
+ */
+async function cropScreenshotInWorker(dataUrl, rect, dpr) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const bitmap = await createImageBitmap(blob);
+  const sx = Math.max(0, Math.round((rect.x || 0) * dpr));
+  const sy = Math.max(0, Math.round((rect.y || 0) * dpr));
+  const sw = Math.min(bitmap.width - sx, Math.round((rect.width || 0) * dpr));
+  const sh = Math.min(bitmap.height - sy, Math.round((rect.height || 0) * dpr));
+  if (sw <= 0 || sh <= 0) throw new Error("empty region");
+  const canvas = new OffscreenCanvas(sw, sh);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, sw, sh);
+  bitmap.close && bitmap.close();
+  const outBlob = await canvas.convertToBlob({ type: "image/png" });
+  return await blobToDataUrl(outBlob);
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("reader error"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 if (chrome.contextMenus && chrome.contextMenus.onClicked) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const isBasic = info.menuItemId === MENU_ID;
@@ -768,8 +891,16 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     const isImage = info.menuItemId === MENU_ID_IMAGE;
     const isBatch = info.menuItemId === MENU_ID_BATCH;
     const isEdit = info.menuItemId === MENU_ID_EDIT;
-    if (!isBasic && !isCloze && !isImage && !isBatch && !isEdit) return;
+    const isShot = info.menuItemId === MENU_ID_SHOT;
+    if (!isBasic && !isCloze && !isImage && !isBatch && !isEdit && !isShot) return;
     if (!tab || tab.id == null) return;
+    if (isShot) {
+      const result = await startScreenshotRegionFlow(tab);
+      if (result && result.broadcast) {
+        try { await chrome.runtime.sendMessage(result.broadcast); } catch (_) { /* no popup open */ }
+      }
+      return;
+    }
     const capture = isImage
       ? captureFromImage(info, tab)
       : await requestCapture(tab.id, info.selectionText);
