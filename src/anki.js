@@ -99,6 +99,48 @@ export function hostnameTag(hostname) {
 }
 
 /**
+ * Render a small, safe subset of inline Markdown into HTML. The
+ * input MUST already be HTML-escaped (e.g. via {@link escapeHtml}); we
+ * only convert the three formatting forms users routinely care about
+ * when shipping selections to Anki:
+ *
+ *   - `**bold**` / `__bold__`     → `<strong>…</strong>`
+ *   - `*italic*` / `_italic_`     → `<em>…</em>`
+ *   - `` `code` ``                → `<code>…</code>`
+ *
+ * Code spans are tokenised first so any `*` / `_` inside them stay
+ * literal. Emphasis matchers are bounded with non-word lookarounds so
+ * an asterisk that's actually punctuation (e.g. `foo*`) is left
+ * alone. The function is deliberately conservative — multi-line
+ * blocks, links, lists, and headings are out of scope.
+ *
+ * @param {string} escapedHtml HTML-escaped source text.
+ * @returns {string} HTML with inline-markdown spans applied.
+ */
+export function renderInlineMarkdown(escapedHtml) {
+  if (escapedHtml == null) return "";
+  let s = String(escapedHtml);
+  // 1. Pull code spans out so their contents are immune to the
+  //    bold/italic passes below.
+  const codes = [];
+  s = s.replace(/`([^`\n]+?)`/g, (_m, body) => {
+    const idx = codes.length;
+    codes.push(body);
+    return `\u0000H2A_CODE_${idx}\u0000`;
+  });
+  // 2. Bold (greedy markers first so `**` doesn't get eaten by `*`).
+  s = s.replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^_])__([^_\n]+?)__(?!_)/g, "$1<strong>$2</strong>");
+  // 3. Italic. Require a non-`*`/`_` neighbour so we don't break
+  //    snippets like `a**b**c` or words containing underscores.
+  s = s.replace(/(^|[^*\w])\*([^*\n]+?)\*(?!\*)/g, "$1<em>$2</em>");
+  s = s.replace(/(^|[^_\w])_([^_\n]+?)_(?!_)/g, "$1<em>$2</em>");
+  // 4. Restore code spans.
+  s = s.replace(/\u0000H2A_CODE_(\d+)\u0000/g, (_m, i) => `<code>${codes[Number(i)]}</code>`);
+  return s;
+}
+
+/**
  * Resolve the AnkiConnect field-name set for a given deck. Each user
  * can register per-deck overrides in settings under `fieldTemplates`,
  * keyed by deck name; this lets, for example, a Vocabulary deck map
@@ -191,11 +233,11 @@ export function buildCardFields(capture) {
   const url = (cap.url || "").trim();
   const title = (cap.title || cap.hostname || url || "source").trim();
 
-  const front = escapeHtml(text).replace(/\n+/g, "<br>");
+  const front = renderInlineMarkdown(escapeHtml(text)).replace(/\n+/g, "<br>");
 
   const parts = [];
   if (paragraph && paragraph !== text) {
-    parts.push(`<blockquote class="h2a-context">${escapeHtml(paragraph).replace(/\n+/g, "<br>")}</blockquote>`);
+    parts.push(`<blockquote class="h2a-context">${renderInlineMarkdown(escapeHtml(paragraph)).replace(/\n+/g, "<br>")}</blockquote>`);
   }
   if (url) {
     const safeUrl = escapeHtml(url);
@@ -226,20 +268,28 @@ export function buildClozeFields(capture) {
   const url = (cap.url || "").trim();
   const title = (cap.title || cap.hostname || url || "source").trim();
 
-  const safeSel = escapeHtml(selection).replace(/\n+/g, "<br>");
+  const safeSel = renderInlineMarkdown(escapeHtml(selection)).replace(/\n+/g, "<br>");
   const cloze = `{{c1::${safeSel}}}`;
 
   let text;
   if (paragraph && paragraph !== selection && selection && paragraph.includes(selection)) {
+    // Splice the cloze marker into the paragraph at the position of the
+    // selection. We do the splice on the *escaped* paragraph (no
+    // markdown yet) so we can locate the selection cleanly, then run
+    // markdown over the surrounding context — masking the cloze marker
+    // so its `*`/`_` neighbours can't trigger emphasis matchers.
     const escPara = escapeHtml(paragraph).replace(/\n+/g, "<br>");
     const escSel = escapeHtml(selection).replace(/\n+/g, "<br>");
-    // Only replace the first occurrence to keep the cloze single-target.
     const idx = escPara.indexOf(escSel);
-    text = idx >= 0
-      ? escPara.slice(0, idx) + cloze + escPara.slice(idx + escSel.length)
-      : `${cloze}<br><br>${escPara}`;
+    if (idx >= 0) {
+      const MARK = "\u0000H2A_CLOZE\u0000";
+      const spliced = escPara.slice(0, idx) + MARK + escPara.slice(idx + escSel.length);
+      text = renderInlineMarkdown(spliced).replace(MARK, cloze);
+    } else {
+      text = `${cloze}<br><br>${renderInlineMarkdown(escPara)}`;
+    }
   } else if (paragraph && paragraph !== selection) {
-    text = `${cloze}<br><br>${escapeHtml(paragraph).replace(/\n+/g, "<br>")}`;
+    text = `${cloze}<br><br>${renderInlineMarkdown(escapeHtml(paragraph)).replace(/\n+/g, "<br>")}`;
   } else {
     text = cloze;
   }

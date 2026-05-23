@@ -294,6 +294,55 @@ if (buildDuplicateQuery({ text: "hi" }) !== "") {
 if (buildDuplicateQuery({ text: "" }) !== "") {
   console.error("buildDuplicateQuery: empty text should yield empty query"); process.exit(1);
 }
+
+// Markdown formatting support for selections (bold / italic / code).
+if (!anki.includes("export function renderInlineMarkdown")) {
+  console.error("src/anki.js must export renderInlineMarkdown"); process.exit(1);
+}
+const { renderInlineMarkdown } = await import("../src/anki.js");
+if (renderInlineMarkdown("hello **world**") !== "hello <strong>world</strong>") {
+  console.error("renderInlineMarkdown: bold ** failed"); process.exit(1);
+}
+if (renderInlineMarkdown("plain __bold__ end") !== "plain <strong>bold</strong> end") {
+  console.error("renderInlineMarkdown: bold __ failed"); process.exit(1);
+}
+if (renderInlineMarkdown("a *italic* b") !== "a <em>italic</em> b") {
+  console.error("renderInlineMarkdown: italic * failed"); process.exit(1);
+}
+if (renderInlineMarkdown("a _italic_ b") !== "a <em>italic</em> b") {
+  console.error("renderInlineMarkdown: italic _ failed"); process.exit(1);
+}
+if (renderInlineMarkdown("call `fn(x)` now") !== "call <code>fn(x)</code> now") {
+  console.error("renderInlineMarkdown: code span failed"); process.exit(1);
+}
+// Inside code spans, emphasis markers stay literal.
+if (renderInlineMarkdown("`*not*`") !== "<code>*not*</code>") {
+  console.error("renderInlineMarkdown: code should shield emphasis"); process.exit(1);
+}
+// Snake_case identifiers must not become italic.
+if (renderInlineMarkdown("my_var_name").includes("<em>")) {
+  console.error("renderInlineMarkdown: snake_case should not italicise"); process.exit(1);
+}
+// buildCardFields should pass markdown through to the front field.
+const mdCard = buildCardFields({ text: "Memory is **residue** of `thought`." });
+if (!mdCard.front.includes("<strong>residue</strong>") || !mdCard.front.includes("<code>thought</code>")) {
+  console.error("buildCardFields: front must render inline markdown"); process.exit(1);
+}
+// buildClozeFields should still emit exactly one cloze marker even
+// when the surrounding paragraph contains markdown.
+const mdCloze = buildClozeFields({
+  text: "residue of thought",
+  paragraph: "Memory is **the** residue of thought, students remember.",
+});
+if (mdCloze.text.split("{{c1::").length !== 2) {
+  console.error("buildClozeFields: markdown context must not duplicate cloze marker"); process.exit(1);
+}
+if (!mdCloze.text.includes("<strong>the</strong>")) {
+  console.error("buildClozeFields: markdown in surrounding paragraph should render"); process.exit(1);
+}
+if (!mdCloze.text.includes("{{c1::residue of thought}}")) {
+  console.error("buildClozeFields: cloze marker should survive markdown pass"); process.exit(1);
+}
 const dqNoDeck = buildDuplicateQuery({ text: "alpha beta gamma" });
 if (dqNoDeck.includes("deck:") || !dqNoDeck.startsWith("\"alpha beta gamma\"")) {
   console.error("buildDuplicateQuery: missing deck should drop deck: prefix"); process.exit(1);
