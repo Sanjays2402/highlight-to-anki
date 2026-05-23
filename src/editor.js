@@ -32,6 +32,8 @@ const els = {
   source: document.getElementById("source-link"),
   errorRow: document.getElementById("error-row"),
   errorText: document.getElementById("error-text"),
+  dupRow: document.getElementById("dup-row"),
+  dupText: document.getElementById("dup-text"),
   sendBtn: document.getElementById("send-btn"),
   sendLabel: document.getElementById("send-label"),
   cancelBtn: document.getElementById("cancel-btn"),
@@ -61,6 +63,43 @@ function showError(msg) {
   }
   els.errorRow.hidden = false;
   els.errorText.textContent = msg;
+}
+
+function showDuplicate(payload) {
+  if (!els.dupRow || !els.dupText) return;
+  if (!payload || !payload.count) {
+    els.dupRow.hidden = true;
+    els.dupText.textContent = "Looks like a duplicate";
+    return;
+  }
+  const n = payload.count;
+  const noun = n === 1 ? "note" : "notes";
+  els.dupText.textContent = `${n} existing ${noun} match this selection in this deck.`;
+  els.dupRow.hidden = false;
+}
+
+let dupCheckSeq = 0;
+async function checkDuplicates() {
+  if (!state.capture) return;
+  const text = state.mode === "cloze" ? (state.capture.text || els.cloze.value) : (state.capture.text || els.front.value);
+  const deck = els.deck && els.deck.value ? els.deck.value : "";
+  if (!text || text.trim().length < 4) {
+    showDuplicate(null);
+    return;
+  }
+  const seq = ++dupCheckSeq;
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:find-duplicates", payload: { deck, text } });
+    if (seq !== dupCheckSeq) return; // stale
+    if (reply && reply.ok && reply.payload) {
+      showDuplicate(reply.payload);
+    } else {
+      showDuplicate(null);
+    }
+  } catch (_err) {
+    if (seq !== dupCheckSeq) return;
+    showDuplicate(null);
+  }
 }
 
 function parseQueryId() {
@@ -204,6 +243,11 @@ function hydrate(capture, settings, decks, models) {
   const seemsCloze = /\{\{c\d+::/.test(els.cloze.value);
   setMode(seemsCloze ? "cloze" : "basic");
 
+  showDuplicate(null);
+  // Kick off a duplicate check in the background — stale replies are
+  // ignored so swapping decks before this resolves stays consistent.
+  checkDuplicates();
+
   const ready = state.decks.length > 0 && state.models.length > 0;
   els.sendBtn.disabled = !ready;
   setStatus(ready ? "ok" : "bad", ready ? "Ready" : "Configure deck/model first");
@@ -291,8 +335,9 @@ async function handleSend() {
 }
 
 for (const btn of els.segBtns) {
-  btn.addEventListener("click", () => setMode(btn.dataset.mode));
+  btn.addEventListener("click", () => { setMode(btn.dataset.mode); checkDuplicates(); });
 }
+els.deck?.addEventListener("change", () => checkDuplicates());
 els.sendBtn?.addEventListener("click", handleSend);
 els.cancelBtn?.addEventListener("click", () => window.close());
 window.addEventListener("keydown", (ev) => {

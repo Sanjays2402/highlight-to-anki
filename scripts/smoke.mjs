@@ -270,4 +270,36 @@ if (!bg.includes("handleSendSelectionCommand")) {
   console.error("background.js must define handleSendSelectionCommand"); process.exit(1);
 }
 
+// Duplicate detection feature.
+if (!anki.includes("export function buildDuplicateQuery") || !anki.includes("export async function findNotes") || !anki.includes("export async function findDuplicates")) {
+  console.error("src/anki.js must export buildDuplicateQuery, findNotes, findDuplicates"); process.exit(1);
+}
+if (!bg.includes("h2a:find-duplicates") || !bg.includes("ankiFindDuplicates")) {
+  console.error("background.js must handle h2a:find-duplicates via findDuplicates"); process.exit(1);
+}
+if (!editorHtml.includes("dup-row") || !editorHtml.includes("dup-text")) {
+  console.error("editor.html must render the duplicate warning row"); process.exit(1);
+}
+if (!editorJs.includes("h2a:find-duplicates") || !editorJs.includes("checkDuplicates")) {
+  console.error("editor.js must call h2a:find-duplicates via checkDuplicates"); process.exit(1);
+}
+const { buildDuplicateQuery } = await import("../src/anki.js");
+const dq = buildDuplicateQuery({ deck: "Inbox", text: "Memory is the residue of thought." });
+if (!dq.includes("deck:\"Inbox\"") || !dq.includes("\"Memory is the residue of thought.\"")) {
+  console.error("buildDuplicateQuery: should include deck filter and quoted phrase"); process.exit(1);
+}
+if (buildDuplicateQuery({ text: "hi" }) !== "") {
+  console.error("buildDuplicateQuery: short text should yield empty query"); process.exit(1);
+}
+if (buildDuplicateQuery({ text: "" }) !== "") {
+  console.error("buildDuplicateQuery: empty text should yield empty query"); process.exit(1);
+}
+const dqNoDeck = buildDuplicateQuery({ text: "alpha beta gamma" });
+if (dqNoDeck.includes("deck:") || !dqNoDeck.startsWith("\"alpha beta gamma\"")) {
+  console.error("buildDuplicateQuery: missing deck should drop deck: prefix"); process.exit(1);
+}
+const dqEscape = buildDuplicateQuery({ deck: "My \"Quoted\" Deck", text: "line1\nline2 \"quoted\"" });
+if (dqEscape.includes("\\")) { console.error("buildDuplicateQuery: should strip backslashes"); process.exit(1); }
+if (dqEscape.includes("\n")) { console.error("buildDuplicateQuery: should collapse newlines"); process.exit(1); }
+
 console.log("\u2713 smoke ok");

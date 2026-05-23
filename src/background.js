@@ -15,6 +15,7 @@ import {
   addNote as ankiAddNote,
   addClozeNote as ankiAddClozeNote,
   addImageNote as ankiAddImageNote,
+  findDuplicates as ankiFindDuplicates,
   buildCardFields,
   buildClozeFields,
   buildImageCardFields,
@@ -840,6 +841,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "h2a:anki-health") {
     ankiHealthCheck().then((status) => sendResponse({ ok: true, payload: status }));
+    return true;
+  }
+  if (msg.type === "h2a:find-duplicates") {
+    (async () => {
+      const payload = msg.payload || {};
+      try {
+        const result = await ankiFindDuplicates({ deck: payload.deck, text: payload.text });
+        sendResponse({ ok: true, payload: result });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    })();
     return true;
   }
   if (msg.type === "h2a:list-decks") {

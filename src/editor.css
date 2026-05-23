@@ -122,3 +122,18 @@ textarea.control { line-height: 1.5; font-family: "Inter", -apple-system, BlinkM
   word-break: break-all;
 }
 .source-link:hover { text-decoration: underline; }
+
+.dup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgb(var(--warn) / 0.10);
+  border: 1px solid rgb(var(--warn) / 0.35);
+  color: rgb(var(--warn));
+  font-size: 12px;
+  line-height: 1.4;
+}
+.dup-row .dup-icon { flex: 0 0 auto; }
+.dup-row .dup-text { color: var(--fg); }

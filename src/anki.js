@@ -368,6 +368,77 @@ export async function addNote(args) {
 }
 
 /**
+ * Build an AnkiConnect search query that matches notes likely to be
+ * duplicates of a given selection. We scope the search to a single
+ * deck (when supplied) and look for the selection text appearing in
+ * any field. The selection is truncated to a reasonable length so the
+ * query stays well below AnkiConnect's request size limits and we
+ * strip newlines/quotes that would otherwise break the search syntax.
+ *
+ * Returns an empty string when there is no meaningful text to search
+ * for so callers can short-circuit the round-trip.
+ *
+ * @param {{ deck?: string, text?: string }} args
+ * @returns {string}
+ */
+export function buildDuplicateQuery(args) {
+  const a = args || {};
+  const raw = String(a.text == null ? "" : a.text);
+  // Anki's full-text search treats quotes specially. Collapse whitespace
+  // and drop characters that have no meaning inside a quoted phrase.
+  const cleaned = raw
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/["\\]+/g, "")
+    .trim();
+  if (cleaned.length < 4) return "";
+  // Cap at 96 chars — long enough to be specific, short enough to avoid
+  // 414-style failures and keep the query snappy on big collections.
+  const phrase = cleaned.length > 96 ? cleaned.slice(0, 96) : cleaned;
+  const deck = (a.deck || "").trim();
+  const parts = [];
+  if (deck) {
+    const safeDeck = deck.replace(/["\\]+/g, "");
+    parts.push(`deck:"${safeDeck}"`);
+  }
+  parts.push(`"${phrase}"`);
+  return parts.join(" ");
+}
+
+/**
+ * Run an AnkiConnect `findNotes` query. Returns an array of note ids
+ * (possibly empty). Throws on malformed payload so the caller surfaces
+ * a clear error to the UI.
+ *
+ * @param {string} query
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<number[]>}
+ */
+export async function findNotes(query, opts = {}) {
+  const q = String(query == null ? "" : query).trim();
+  if (!q) return [];
+  const result = await invoke("findNotes", { query: q }, opts);
+  if (!Array.isArray(result)) throw new Error("findNotes: unexpected payload");
+  return result.filter((n) => Number.isFinite(n));
+}
+
+/**
+ * Convenience: search Anki for notes likely to duplicate the supplied
+ * selection. Returns a structured payload the UI can render directly,
+ * including the actual query used so debugging is easier.
+ *
+ * @param {{ deck?: string, text?: string, timeoutMs?: number, url?: string }} args
+ * @returns {Promise<{ query: string, noteIds: number[], count: number }>}
+ */
+export async function findDuplicates(args) {
+  const a = args || {};
+  const query = buildDuplicateQuery({ deck: a.deck, text: a.text });
+  if (!query) return { query: "", noteIds: [], count: 0 };
+  const noteIds = await findNotes(query, { timeoutMs: a.timeoutMs, url: a.url });
+  return { query, noteIds, count: noteIds.length };
+}
+
+/**
  * Fetch the list of deck names from AnkiConnect.
  * @param {{ timeoutMs?: number, url?: string }=} opts
  * @returns {Promise<string[]>}
