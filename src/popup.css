@@ -45,10 +45,61 @@ body {
 
 /* Ambient gradient blobs --------------------------------------------------- */
 .ambient { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
-.blob { position: absolute; border-radius: 50%; filter: blur(48px); opacity: 0.45; }
-.blob-a { width: 260px; height: 260px; top: -90px; left: -80px; background: rgb(var(--accent) / 0.55); }
-.blob-b { width: 220px; height: 220px; bottom: -90px; right: -70px; background: rgb(var(--accent-strong) r g b / 0.35); background: radial-gradient(circle, rgba(180,120,255,0.5), rgba(180,120,255,0)); }
-body[data-theme="light"] .blob { opacity: 0.55; }
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(54px);
+  opacity: 0.5;
+  will-change: transform;
+  animation: drift 18s var(--ease) infinite alternate;
+}
+.blob-a {
+  width: 280px; height: 280px;
+  top: -100px; left: -90px;
+  background: radial-gradient(circle at 30% 30%, rgb(var(--accent) / 0.85), rgb(var(--accent) / 0) 70%);
+}
+.blob-b {
+  width: 240px; height: 240px;
+  bottom: -100px; right: -80px;
+  background: radial-gradient(circle at 60% 60%, rgba(180, 120, 255, 0.6), rgba(180, 120, 255, 0) 70%);
+  animation-delay: -6s;
+}
+.blob-c {
+  width: 180px; height: 180px;
+  top: 40%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.35), rgba(96, 165, 250, 0) 70%);
+  opacity: 0.35;
+  animation-duration: 24s;
+  animation-delay: -12s;
+}
+body[data-theme="light"] .blob { opacity: 0.6; }
+body[data-theme="light"] .blob-c { opacity: 0.45; }
+
+/* Fine noise grain overlay for liquid-glass depth -------------------------- */
+.grain {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 160px 160px;
+}
+body[data-theme="light"] .grain { opacity: 0.06; mix-blend-mode: multiply; }
+
+@keyframes drift {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(18px, -14px, 0) scale(1.08); }
+}
+.blob-c {
+  /* preserve centering during drift */
+  animation-name: drift-c;
+}
+@keyframes drift-c {
+  from { transform: translate(-50%, -50%) scale(1); }
+  to   { transform: translate(calc(-50% + 22px), calc(-50% - 16px)) scale(1.1); }
+}
 
 /* Layout ------------------------------------------------------------------- */
 .topbar, .content, .footer { position: relative; z-index: 1; }
@@ -72,19 +123,49 @@ body[data-theme="light"] .blob { opacity: 0.55; }
 
 /* Glass surfaces ----------------------------------------------------------- */
 .glass {
+  position: relative;
   background: var(--glass);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
   border: 1px solid var(--line);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 1px 2px rgba(0, 0, 0, 0.2);
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.015),
+    0 1px 2px rgba(0, 0, 0, 0.24),
+    0 12px 28px -16px rgba(0, 0, 0, 0.45);
+}
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0) 28%);
+  opacity: 0.9;
+}
+.glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(0, 0, 0, 0.10) 100%);
+  opacity: 0.4;
 }
 body[data-theme="light"] .glass {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 1px 2px rgba(0, 0, 0, 0.06);
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 14px 30px -18px rgba(20, 22, 30, 0.25);
 }
+body[data-theme="light"] .glass::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 35%);
+}
+body[data-theme="light"] .glass::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 60%, rgba(0, 0, 0, 0.04) 100%);
+}
+.topbar.glass::before, .topbar.glass::after { border-radius: 0; }
 
 /* Buttons ------------------------------------------------------------------ */
 .icon-btn, .btn {
@@ -105,7 +186,19 @@ body[data-theme="light"] .glass {
 .btn:active { transform: scale(0.98); }
 
 /* Card --------------------------------------------------------------------- */
-.card { border-radius: 14px; padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 10px; }
+.card {
+  border-radius: 16px;
+  padding: 14px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 220ms var(--ease), border-color 220ms var(--ease), box-shadow 220ms var(--ease);
+}
+.card > * { position: relative; z-index: 1; }
+.card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-soft); font-weight: 600; }
 .card-body { display: flex; flex-direction: column; gap: 6px; }
@@ -115,6 +208,21 @@ body[data-theme="light"] .glass {
 .k { color: var(--fg-soft); font-size: 11px; }
 .v { color: var(--fg-dim); font-size: 12px; text-align: right; max-width: 70%; word-break: break-word; }
 .v.mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+
+/* Custom scrollbars for inner lists --------------------------------------- */
+.batch-list::-webkit-scrollbar,
+.recent-list::-webkit-scrollbar { width: 8px; }
+.batch-list::-webkit-scrollbar-track,
+.recent-list::-webkit-scrollbar-track { background: transparent; }
+.batch-list::-webkit-scrollbar-thumb,
+.recent-list::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.batch-list::-webkit-scrollbar-thumb:hover,
+.recent-list::-webkit-scrollbar-thumb:hover { background: rgb(var(--accent) / 0.5); background-clip: padding-box; }
 .kv-error .v { color: rgb(var(--bad)); }
 
 /* Pill / status indicator -------------------------------------------------- */

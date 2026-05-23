@@ -15,5 +15,5 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Edit-before-send dialog
 - [x] Field templates per deck
 - [x] Sync status indicator
-- [ ] Liquid-glass popup UI
+- [x] Liquid-glass popup UI
 - [ ] Dark/light theme
