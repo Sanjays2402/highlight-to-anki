@@ -5,7 +5,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] MV3 manifest + content script scaffolding
 - [x] Context menu: 'Send to Anki' on selection
 - [x] AnkiConnect health check + version display
-- [ ] Default deck/model selection in options
+- [x] Default deck/model selection in options
 - [ ] Card front: selection text, back: source URL + paragraph
 - [ ] Cloze deletion mode (turn selection into cloze)
 - [ ] Auto-tag with hostname

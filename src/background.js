@@ -8,12 +8,43 @@
 // All chrome.* APIs used here are covered by manifest permissions:
 //   contextMenus, storage, activeTab, scripting, <all_urls>.
 
-import { healthCheck as ankiHealthCheck } from "./anki.js";
+import {
+  healthCheck as ankiHealthCheck,
+  deckNames as ankiDeckNames,
+  modelNames as ankiModelNames,
+} from "./anki.js";
 
 const TAG = "[highlight-to-anki:bg]";
 const MENU_ID = "h2a-send-to-anki";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
+const SETTINGS_KEY = "h2a:settings";
+const DEFAULT_SETTINGS = Object.freeze({
+  defaultDeck: "",
+  defaultModel: "",
+  updatedAt: null,
+});
+
+/** Read settings from sync storage, falling back to local + defaults. */
+async function loadSettings() {
+  const area = chrome.storage.sync || chrome.storage.local;
+  const store = await area.get(SETTINGS_KEY);
+  const raw = store[SETTINGS_KEY] || {};
+  return { ...DEFAULT_SETTINGS, ...raw };
+}
+
+/** Persist settings — only known keys, last-write-wins. */
+async function saveSettings(patch) {
+  const area = chrome.storage.sync || chrome.storage.local;
+  const current = await loadSettings();
+  const next = {
+    defaultDeck: typeof patch.defaultDeck === "string" ? patch.defaultDeck : current.defaultDeck,
+    defaultModel: typeof patch.defaultModel === "string" ? patch.defaultModel : current.defaultModel,
+    updatedAt: new Date().toISOString(),
+  };
+  await area.set({ [SETTINGS_KEY]: next });
+  return next;
+}
 
 /** Create (or recreate) the context menu entry. */
 function ensureMenu() {
@@ -147,6 +178,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "h2a:anki-health") {
     ankiHealthCheck().then((status) => sendResponse({ ok: true, payload: status }));
+    return true;
+  }
+  if (msg.type === "h2a:list-decks") {
+    ankiDeckNames()
+      .then((names) => sendResponse({ ok: true, payload: names }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+    return true;
+  }
+  if (msg.type === "h2a:list-models") {
+    ankiModelNames()
+      .then((names) => sendResponse({ ok: true, payload: names }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+    return true;
+  }
+  if (msg.type === "h2a:get-settings") {
+    loadSettings().then((settings) => sendResponse({ ok: true, payload: settings }));
+    return true;
+  }
+  if (msg.type === "h2a:set-settings") {
+    saveSettings(msg.payload || {})
+      .then((settings) => sendResponse({ ok: true, payload: settings }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
     return true;
   }
   return false;

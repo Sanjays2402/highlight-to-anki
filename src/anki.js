@@ -58,6 +58,28 @@ export async function invoke(action, params = {}, opts = {}) {
 }
 
 /**
+ * Fetch the list of deck names from AnkiConnect.
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<string[]>}
+ */
+export async function deckNames(opts = {}) {
+  const result = await invoke("deckNames", {}, opts);
+  if (!Array.isArray(result)) throw new Error("deckNames: unexpected payload");
+  return result.filter((s) => typeof s === "string");
+}
+
+/**
+ * Fetch the list of note/model names from AnkiConnect.
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<string[]>}
+ */
+export async function modelNames(opts = {}) {
+  const result = await invoke("modelNames", {}, opts);
+  if (!Array.isArray(result)) throw new Error("modelNames: unexpected payload");
+  return result.filter((s) => typeof s === "string");
+}
+
+/**
  * Lightweight health probe. Returns a structured status object the UI
  * can render without further branching.
  *

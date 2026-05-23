@@ -85,9 +85,9 @@ async function checkHealth() {
 
 els.refresh?.addEventListener("click", checkHealth);
 els.settings?.addEventListener("click", () => {
-  // Settings UI lands in a later roadmap item.
-  setPill(els.pill?.dataset.state || "checking", "Settings coming soon");
-  setTimeout(checkHealth, 1200);
+  if (chrome.runtime && chrome.runtime.openOptionsPage) {
+    chrome.runtime.openOptionsPage();
+  }
 });
 
 // Match system theme for the first paint.
