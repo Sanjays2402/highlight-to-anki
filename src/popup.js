@@ -15,6 +15,11 @@ import {
 
 const TAG = "[highlight-to-anki:popup]";
 
+const STATS_TOP_N = 4;
+const STATS_SPARK_DAYS = 7;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const WEEKDAY_INITIAL = ["S", "M", "T", "W", "T", "F", "S"];
+
 const els = {
   pill: document.getElementById("health-pill"),
   pillText: document.querySelector("#health-pill .pill-text"),
@@ -59,7 +64,161 @@ const els = {
   previewSend: document.getElementById("preview-send"),
   previewSendLabel: document.getElementById("preview-send-label"),
   toastStack: document.getElementById("toast-stack"),
+  statsPill: document.getElementById("stats-pill"),
+  statsTotal: document.getElementById("stats-total"),
+  statsEmpty: document.getElementById("stats-empty"),
+  statsGrid: document.getElementById("stats-grid"),
+  statsToday: document.getElementById("stats-today"),
+  statsWeek: document.getElementById("stats-week"),
+  statsStreak: document.getElementById("stats-streak"),
+  statsSparkBars: document.getElementById("stats-spark-bars"),
+  statsSparkAxis: document.getElementById("stats-spark-axis"),
+  statsDecks: document.getElementById("stats-decks"),
+  statsTags: document.getElementById("stats-tags"),
 };
+
+/**
+ * Pure helper: aggregate a recent-history list into the counts the
+ * stats card renders. Exported via window for any future caller and
+ * unit-testable in isolation (no DOM access).
+ *
+ * @param {object[]} history
+ * @param {Date=} now
+ */
+function computeStats(history, now = new Date()) {
+  const list = Array.isArray(history) ? history : [];
+  const total = list.length;
+  const startOfDay = (d) => {
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    return x.getTime();
+  };
+  const todayStart = startOfDay(now);
+  const days = [];
+  for (let i = STATS_SPARK_DAYS - 1; i >= 0; i -= 1) {
+    const d = new Date(todayStart - i * DAY_MS);
+    days.push({ key: startOfDay(d), label: WEEKDAY_INITIAL[d.getDay()], count: 0 });
+  }
+  const dayIndex = new Map(days.map((d, i) => [d.key, i]));
+  const decks = new Map();
+  const tags = new Map();
+  let today = 0;
+  let week = 0;
+  const dayKeysWithCards = new Set();
+  for (const row of list) {
+    if (!row) continue;
+    const when = row.sentAt ? new Date(row.sentAt) : null;
+    if (when && !Number.isNaN(when.getTime())) {
+      const dKey = startOfDay(when);
+      if (dKey === todayStart) today += 1;
+      if (dKey > todayStart - STATS_SPARK_DAYS * DAY_MS) {
+        week += 1;
+        if (dayIndex.has(dKey)) days[dayIndex.get(dKey)].count += 1;
+      }
+      dayKeysWithCards.add(dKey);
+    }
+    const deckName = (row.deck || "").trim();
+    if (deckName) decks.set(deckName, (decks.get(deckName) || 0) + 1);
+    const mode = row.mode === "cloze" ? "cloze" : row.mode === "image" ? "image" : "basic";
+    tags.set(mode, (tags.get(mode) || 0) + 1);
+    const host = (row.hostname || "").trim().toLowerCase().replace(/^www\./, "");
+    if (host) {
+      const key = `site:${host}`;
+      tags.set(key, (tags.get(key) || 0) + 1);
+    }
+  }
+  // Streak: consecutive days ending today with at least 1 card.
+  let streak = 0;
+  for (let i = 0; i < 365; i += 1) {
+    const key = todayStart - i * DAY_MS;
+    if (dayKeysWithCards.has(key)) streak += 1;
+    else break;
+  }
+  const toEntries = (m) =>
+    Array.from(m.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  return {
+    total,
+    today,
+    week,
+    streak,
+    days,
+    topDecks: toEntries(decks).slice(0, STATS_TOP_N),
+    topTags: toEntries(tags).slice(0, STATS_TOP_N),
+  };
+}
+
+function renderStatsBarList(ul, entries) {
+  if (!ul) return;
+  ul.innerHTML = "";
+  if (!entries.length) {
+    const li = document.createElement("li");
+    li.className = "stats-bar-empty";
+    li.textContent = "—";
+    ul.appendChild(li);
+    return;
+  }
+  const max = entries[0][1] || 1;
+  for (const [name, count] of entries) {
+    const li = document.createElement("li");
+    li.className = "stats-bar";
+    const label = document.createElement("span");
+    label.className = "stats-bar-label";
+    label.textContent = name;
+    label.title = name;
+    const track = document.createElement("span");
+    track.className = "stats-bar-track";
+    const fill = document.createElement("span");
+    fill.className = "stats-bar-fill";
+    fill.style.width = `${Math.max(6, Math.round((count / max) * 100))}%`;
+    track.appendChild(fill);
+    const val = document.createElement("span");
+    val.className = "stats-bar-count";
+    val.textContent = String(count);
+    li.appendChild(label);
+    li.appendChild(track);
+    li.appendChild(val);
+    ul.appendChild(li);
+  }
+}
+
+function renderStats(history) {
+  const s = computeStats(history || []);
+  if (els.statsTotal) els.statsTotal.textContent = s.total === 1 ? "1 total" : `${s.total} total`;
+  if (els.statsPill) els.statsPill.dataset.state = s.total > 0 ? "ok" : "idle";
+  const empty = s.total === 0;
+  if (els.statsEmpty) els.statsEmpty.hidden = !empty;
+  if (els.statsGrid) els.statsGrid.hidden = empty;
+  if (empty) return;
+  if (els.statsToday) els.statsToday.textContent = String(s.today);
+  if (els.statsWeek) els.statsWeek.textContent = String(s.week);
+  if (els.statsStreak) els.statsStreak.textContent = String(s.streak);
+  if (els.statsSparkBars) {
+    els.statsSparkBars.innerHTML = "";
+    const max = Math.max(1, ...s.days.map((d) => d.count));
+    for (const day of s.days) {
+      const col = document.createElement("span");
+      col.className = "stats-spark-col";
+      col.title = `${day.count} card${day.count === 1 ? "" : "s"}`;
+      const bar = document.createElement("span");
+      bar.className = "stats-spark-bar";
+      if (day.count === 0) bar.dataset.zero = "1";
+      bar.style.height = `${Math.max(6, Math.round((day.count / max) * 100))}%`;
+      col.appendChild(bar);
+      els.statsSparkBars.appendChild(col);
+    }
+  }
+  if (els.statsSparkAxis) {
+    els.statsSparkAxis.innerHTML = "";
+    for (const day of s.days) {
+      const tick = document.createElement("span");
+      tick.className = "stats-spark-tick";
+      tick.textContent = day.label;
+      els.statsSparkAxis.appendChild(tick);
+    }
+  }
+  renderStatsBarList(els.statsDecks, s.topDecks);
+  renderStatsBarList(els.statsTags, s.topTags);
+}
 
 // ----------------------------------------------------------------------
 // Toast notifications
@@ -394,6 +553,7 @@ function fmtRelative(iso) {
 }
 
 function renderHistory(items) {
+  renderStats(items);
   const list = Array.isArray(items) ? items : [];
   const n = list.length;
   if (els.recentCount) els.recentCount.textContent = n === 1 ? "1 sent" : `${n} sent`;

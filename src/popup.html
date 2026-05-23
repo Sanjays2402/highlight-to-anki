@@ -203,6 +203,66 @@
         </button>
       </div>
     </section>
+    <section class="card glass" id="stats-card" aria-live="polite">
+      <div class="card-head">
+        <span class="card-label">Stats</span>
+        <span class="pill pill-checking" id="stats-pill" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text" id="stats-total">0 total</span>
+        </span>
+      </div>
+      <div class="card-body" id="stats-body">
+        <div class="empty" id="stats-empty">
+          <svg class="empty-art" width="96" height="72" viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 60c10-22 30-28 48-20 12 6 22 4 32-4 10-8 22-4 22 12 0 14-14 24-30 26-26 3-58-2-66-6-8-4-12-4-6-8z" opacity="0.30"/>
+            <path d="M22 72V52M40 72V42M58 72V30M76 72V46M94 72V36"/>
+            <path d="M16 78h92"/>
+          </svg>
+          <p class="empty-text">No stats yet. Send a few cards to see counts by deck, tag, and day.</p>
+        </div>
+        <div class="stats-grid" id="stats-grid" hidden>
+          <div class="stats-summary">
+            <div class="stats-kpi">
+              <span class="stats-kpi-num" id="stats-today">0</span>
+              <span class="stats-kpi-lbl">Today</span>
+            </div>
+            <div class="stats-kpi">
+              <span class="stats-kpi-num" id="stats-week">0</span>
+              <span class="stats-kpi-lbl">7d</span>
+            </div>
+            <div class="stats-kpi">
+              <span class="stats-kpi-num" id="stats-streak">0</span>
+              <span class="stats-kpi-lbl">Streak</span>
+            </div>
+          </div>
+          <div class="stats-spark" aria-label="Cards per day, last 7 days">
+            <div class="stats-spark-bars" id="stats-spark-bars"></div>
+            <div class="stats-spark-axis" id="stats-spark-axis"></div>
+          </div>
+          <div class="stats-cols">
+            <div class="stats-col">
+              <div class="stats-col-head">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M4 7h16M4 12h16M4 17h10"/>
+                </svg>
+                <span>Top decks</span>
+              </div>
+              <ul class="stats-bar-list" id="stats-decks"></ul>
+            </div>
+            <div class="stats-col">
+              <div class="stats-col-head">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M20 12l-8 8a2 2 0 0 1-2.83 0L3 13.83a2 2 0 0 1 0-2.83l8-8H20z"/>
+                  <circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/>
+                </svg>
+                <span>Top tags</span>
+              </div>
+              <ul class="stats-bar-list" id="stats-tags"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
     <section class="card glass" id="recent-card" aria-live="polite">
       <div class="card-head">
         <span class="card-label">Recent</span>
