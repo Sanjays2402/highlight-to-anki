@@ -5,6 +5,8 @@
 // checking → ok / bad. All state changes go through `renderHealth()`
 // so the DOM stays in sync.
 
+import { initTheme } from "./theme.js";
+
 const TAG = "[highlight-to-anki:popup]";
 
 const els = {
@@ -353,8 +355,18 @@ async function loadSync() {
 }
 
 // Match system theme for the first paint.
-const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
-document.body.dataset.theme = prefersLight ? "light" : "dark";
+const themeCtl = initTheme({
+  onChange: ({ preference }) => {
+    const btns = document.querySelectorAll(".theme-btn");
+    for (const b of btns) {
+      const active = b.dataset.themePref === preference;
+      b.setAttribute("aria-checked", active ? "true" : "false");
+    }
+  },
+});
+for (const btn of document.querySelectorAll(".theme-btn")) {
+  btn.addEventListener("click", () => themeCtl.setPreference(btn.dataset.themePref));
+}
 
 checkHealth();
 loadBatch();

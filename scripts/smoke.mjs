@@ -212,4 +212,44 @@ if (!popupJs.includes("h2a:sync-status") || !popupJs.includes("renderSync")) {
   console.error("popup.js must render sync status via h2a:sync-status"); process.exit(1);
 }
 
+// Dark/light theme feature.
+if (!fs.existsSync("src/theme.js")) { console.error("missing file: src/theme.js"); process.exit(1); }
+const themeSrc = fs.readFileSync("src/theme.js", "utf8");
+if (!themeSrc.includes("export function resolveTheme") || !themeSrc.includes("export function initTheme")) {
+  console.error("src/theme.js must export resolveTheme and initTheme"); process.exit(1);
+}
+if (!bg.includes("theme:") || !bg.includes("THEME_PREFERENCES")) {
+  console.error("background.js must persist a theme preference (THEME_PREFERENCES + theme: ...)"); process.exit(1);
+}
+if (!popupHtml.includes("theme-seg") || !popupHtml.includes('data-theme-pref="light"') || !popupHtml.includes('data-theme-pref="dark"') || !popupHtml.includes('data-theme-pref="auto"')) {
+  console.error("popup.html must render a theme segmented control with light/auto/dark"); process.exit(1);
+}
+if (!popupJs.includes("initTheme") || !popupJs.includes("setPreference")) {
+  console.error("popup.js must wire initTheme and setPreference"); process.exit(1);
+}
+if (!optHtml.includes("theme-seg") || !optHtml.includes('data-theme-pref="auto"')) {
+  console.error("options.html must render the theme picker"); process.exit(1);
+}
+if (!optJs.includes("initTheme")) {
+  console.error("options.js must use initTheme"); process.exit(1);
+}
+const editorJsSrc = fs.readFileSync("src/editor.js", "utf8");
+if (!editorJsSrc.includes("initTheme")) {
+  console.error("editor.js must use initTheme"); process.exit(1);
+}
+const popupCss = fs.readFileSync("src/popup.css", "utf8");
+if (!popupCss.includes(".theme-seg") || !popupCss.includes(".theme-btn")) {
+  console.error("popup.css must style .theme-seg / .theme-btn"); process.exit(1);
+}
+const optionsCss = fs.readFileSync("src/options.css", "utf8");
+if (!optionsCss.includes(".theme-seg") || !optionsCss.includes(".theme-btn")) {
+  console.error("options.css must style .theme-seg / .theme-btn"); process.exit(1);
+}
+const { resolveTheme, coercePreference, THEME_VALUES } = await import("../src/theme.js");
+if (!Array.isArray(THEME_VALUES) || THEME_VALUES.length !== 3) { console.error("THEME_VALUES must be a 3-tuple"); process.exit(1); }
+if (resolveTheme("dark", false) !== "dark" || resolveTheme("dark", true) !== "dark") { console.error("resolveTheme: 'dark' must pin dark"); process.exit(1); }
+if (resolveTheme("light", false) !== "light" || resolveTheme("light", true) !== "light") { console.error("resolveTheme: 'light' must pin light"); process.exit(1); }
+if (resolveTheme("auto", true) !== "light" || resolveTheme("auto", false) !== "dark") { console.error("resolveTheme: 'auto' must follow media query"); process.exit(1); }
+if (coercePreference("bogus") !== "auto" || coercePreference("dark") !== "dark") { console.error("coercePreference: invalid input should fall back to 'auto'"); process.exit(1); }
+
 console.log("\u2713 smoke ok");

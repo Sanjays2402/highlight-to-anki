@@ -124,6 +124,36 @@
       </div>
     </section>
 
+    <section class="card glass" id="appearance-card">
+      <div class="card-head">
+        <span class="card-label">Appearance</span>
+        <span class="card-hint">Theme applies to popup, options, and the edit dialog</span>
+      </div>
+      <p class="hint" style="margin-top: -4px;">Choose <code>Auto</code> to follow your system, or pin to <code>Light</code> / <code>Dark</code>.</p>
+      <div class="theme-seg theme-seg-wide" role="radiogroup" aria-label="Theme preference">
+        <button type="button" class="theme-btn" data-theme-pref="light" role="radio" aria-checked="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+          </svg>
+          <span>Light</span>
+        </button>
+        <button type="button" class="theme-btn" data-theme-pref="auto" role="radio" aria-checked="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="8"/>
+            <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/>
+          </svg>
+          <span>Auto</span>
+        </button>
+        <button type="button" class="theme-btn" data-theme-pref="dark" role="radio" aria-checked="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+          </svg>
+          <span>Dark</span>
+        </button>
+      </div>
+    </section>
+
     <section class="empty glass" id="empty-state" hidden>
       <svg width="120" height="96" viewBox="0 0 240 192" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M40 60c0-12 10-22 22-22h116c12 0 22 10 22 22v72c0 12-10 22-22 22H62c-12 0-22-10-22-22z" opacity="0.35"/>

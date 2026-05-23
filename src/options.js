@@ -7,6 +7,8 @@
 
 const TAG = "[highlight-to-anki:options]";
 
+import { initTheme } from "./theme.js";
+
 const els = {
   pill: document.getElementById("health-pill"),
   pillText: document.querySelector("#health-pill .pill-text"),
@@ -351,6 +353,17 @@ function addTemplate() {
 
 const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
 document.body.dataset.theme = prefersLight ? "light" : "dark";
+
+const themeCtl = initTheme({
+  onChange: ({ preference }) => {
+    for (const b of document.querySelectorAll(".theme-btn")) {
+      b.setAttribute("aria-checked", b.dataset.themePref === preference ? "true" : "false");
+    }
+  },
+});
+for (const btn of document.querySelectorAll(".theme-btn")) {
+  btn.addEventListener("click", () => themeCtl.setPreference(btn.dataset.themePref));
+}
 
 (async () => {
   await loadSettings();

@@ -7,6 +7,8 @@
 // forward the edited fields back to the service worker which calls
 // AnkiConnect with them verbatim (no template re-derivation).
 
+import { initTheme } from "./theme.js";
+
 const TAG = "[highlight-to-anki:editor]";
 
 const els = {
@@ -300,5 +302,6 @@ window.addEventListener("keydown", (ev) => {
 
 const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
 document.body.dataset.theme = prefersLight ? "light" : "dark";
+initTheme();
 
 loadInitial();

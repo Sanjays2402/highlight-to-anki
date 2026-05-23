@@ -40,8 +40,10 @@ const DEFAULT_SETTINGS = Object.freeze({
   defaultModel: "",
   clozeModel: "",
   fieldTemplates: {},
+  theme: "auto",
   updatedAt: null,
 });
+const THEME_PREFERENCES = new Set(["auto", "dark", "light"]);
 
 /**
  * Sanitise a user-supplied field-templates map. Drops empty deck keys
@@ -120,6 +122,7 @@ async function saveSettings(patch) {
     fieldTemplates: patch.fieldTemplates !== undefined
       ? sanitiseTemplates(patch.fieldTemplates)
       : (current.fieldTemplates || {}),
+    theme: THEME_PREFERENCES.has(patch.theme) ? patch.theme : (current.theme || "auto"),
     updatedAt: new Date().toISOString(),
   };
   await area.set({ [SETTINGS_KEY]: next });
