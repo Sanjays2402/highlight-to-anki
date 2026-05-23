@@ -26,4 +26,4 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Toast notifications for send success/failure with undo
 - [x] AnkiConnect connection settings (host/port) in options
 - [x] Selection screenshot mode: capture region as card image
-- [ ] Onboarding flow: first-run tutorial with liquid-glass cards
+- [x] Onboarding flow: first-run tutorial with liquid-glass cards

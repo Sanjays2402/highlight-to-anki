@@ -395,9 +395,33 @@ function captureFromImage(info, tab) {
   };
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  console.log(TAG, "installed");
+const ONBOARDING_KEY = "h2a:onboarding";
+
+/**
+ * Open the first-run onboarding tutorial in a new tab. The tutorial
+ * itself decides when the user is finished and writes
+ * `h2a:onboarding` into chrome.storage.local; we just open the URL.
+ *
+ * @returns {Promise<void>}
+ */
+async function openOnboarding() {
+  const url = chrome.runtime.getURL("src/onboarding.html");
+  try {
+    await chrome.tabs.create({ url, active: true });
+  } catch (err) {
+    console.warn(TAG, "openOnboarding tabs.create failed:", err && err.message);
+  }
+}
+
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log(TAG, "installed", details && details.reason);
   ensureMenu();
+  if (details && details.reason === "install") {
+    // First-run only — never re-open on update / browser_update / chrome_update.
+    openOnboarding().catch((err) => {
+      console.warn(TAG, "first-run onboarding open failed:", err && err.message);
+    });
+  }
 });
 chrome.runtime.onStartup.addListener(() => ensureMenu());
 // Cover the cold-boot case where neither onInstalled nor onStartup has
@@ -1258,6 +1282,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendBatch()
       .then((result) => sendResponse({ ok: result.ok, payload: result }))
       .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+    return true;
+  }
+  if (msg.type === "h2a:open-onboarding") {
+    openOnboarding()
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+    return true;
+  }
+  if (msg.type === "h2a:onboarding-status") {
+    chrome.storage.local.get(ONBOARDING_KEY).then((store) => {
+      sendResponse({ ok: true, payload: store[ONBOARDING_KEY] || { completed: false } });
+    });
     return true;
   }
   if (msg.type === "h2a:set-settings") {

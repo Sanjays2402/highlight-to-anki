@@ -599,6 +599,20 @@ for (const btn of document.querySelectorAll(".theme-btn")) {
   btn.addEventListener("click", () => themeCtl.setPreference(btn.dataset.themePref));
 }
 
+const replayBtn = document.getElementById("replay-tutorial");
+if (replayBtn) {
+  replayBtn.addEventListener("click", async () => {
+    replayBtn.disabled = true;
+    try {
+      await chrome.runtime.sendMessage({ type: "h2a:open-onboarding" });
+    } catch (err) {
+      console.warn("[options] replay tutorial failed:", err && err.message);
+    } finally {
+      setTimeout(() => { replayBtn.disabled = false; }, 600);
+    }
+  });
+}
+
 (async () => {
   await loadSettings();
   if (els.ankiHost) els.ankiHost.value = state.settings.ankiHost || "127.0.0.1";

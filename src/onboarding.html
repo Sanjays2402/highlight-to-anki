@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Welcome — Highlight to Anki</title>
+<link rel="stylesheet" href="popup.css">
+<link rel="stylesheet" href="onboarding.css">
+</head>
+<body data-theme="dark" class="onboarding-body">
+  <div class="ambient" aria-hidden="true">
+    <span class="blob blob-a"></span>
+    <span class="blob blob-b"></span>
+    <span class="blob blob-c"></span>
+    <span class="grain"></span>
+  </div>
+
+  <main class="onb-shell">
+    <header class="onb-head">
+      <div class="brand">
+        <svg class="brand-mark" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 6.5a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"/>
+          <path d="M8 9.5h8M8 13h5"/>
+        </svg>
+        <span class="title">Highlight to Anki</span>
+      </div>
+      <div class="onb-progress" role="progressbar" aria-label="Tutorial progress" aria-valuemin="1" aria-valuemax="4" aria-valuenow="1">
+        <span class="onb-step is-active" data-step="1"></span>
+        <span class="onb-step" data-step="2"></span>
+        <span class="onb-step" data-step="3"></span>
+        <span class="onb-step" data-step="4"></span>
+      </div>
+      <button id="skip-btn" class="btn btn-ghost btn-sm" type="button" title="Skip tutorial">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M6 6l12 12M6 18L18 6"/>
+        </svg>
+        <span>Skip</span>
+      </button>
+    </header>
+
+    <section class="onb-deck">
+      <!-- Step 1: Welcome -->
+      <article class="onb-card glass is-active" data-step="1">
+        <div class="onb-art">
+          <svg viewBox="0 0 240 160" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M28 60c0-10 8-18 18-18h120c10 0 18 8 18 18v60c0 10-8 18-18 18H46c-10 0-18-8-18-18z" opacity="0.32"/>
+            <path d="M52 80h96M52 100h66M52 118h40"/>
+            <rect x="150" y="22" width="68" height="42" rx="8" opacity="0.85"/>
+            <path d="M162 38h32M162 48h22"/>
+            <path d="M198 64l8 14-14-4z" opacity="0.5"/>
+          </svg>
+        </div>
+        <h1 class="onb-title">Highlight anything. Remember it.</h1>
+        <p class="onb-lede">
+          Select text on any page, send it straight to Anki with the source URL
+          already cited. Zero copy-paste. Zero context lost.
+        </p>
+        <ul class="onb-bullets">
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg>
+            <span>Right-click selections, images, or screenshot regions.</span>
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg>
+            <span>Cloze deletions, per-site decks, duplicate detection.</span>
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg>
+            <span>All local. Nothing leaves your machine.</span>
+          </li>
+        </ul>
+      </article>
+
+      <!-- Step 2: Connect AnkiConnect -->
+      <article class="onb-card glass" data-step="2">
+        <div class="onb-art onb-art-sm">
+          <svg viewBox="0 0 240 140" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="22" y="34" width="86" height="64" rx="10" opacity="0.85"/>
+            <rect x="132" y="34" width="86" height="64" rx="10" opacity="0.85"/>
+            <path d="M108 66h24" stroke-dasharray="3 4"/>
+            <circle cx="65" cy="66" r="14" opacity="0.55"/>
+            <circle cx="175" cy="66" r="14" opacity="0.55"/>
+            <path d="M40 110h60M140 110h60" opacity="0.4"/>
+          </svg>
+        </div>
+        <h2 class="onb-title">Connect Anki.</h2>
+        <p class="onb-lede">
+          This extension talks to Anki Desktop through the
+          <strong>AnkiConnect</strong> add-on. Two-minute install:
+        </p>
+        <ol class="onb-steps">
+          <li><span class="num">1</span><span>Open Anki Desktop. Go to <em>Tools → Add-ons → Get Add-ons…</em></span></li>
+          <li>
+            <span class="num">2</span>
+            <span>Paste the add-on code, click OK, restart Anki.</span>
+            <div class="copy-row">
+              <code id="ankiconnect-code">2055492159</code>
+              <button id="copy-code-btn" class="btn btn-ghost btn-sm" type="button" title="Copy add-on code">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect x="9" y="9" width="11" height="11" rx="2"/>
+                  <path d="M5 15V6a2 2 0 0 1 2-2h9"/>
+                </svg>
+                <span id="copy-code-label">Copy</span>
+              </button>
+            </div>
+          </li>
+          <li>
+            <span class="num">3</span>
+            <span>Keep Anki Desktop running, then test the link:</span>
+            <div class="onb-status-row">
+              <button id="test-btn" class="btn btn-primary btn-sm" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12a9 9 0 1 1-9-9"/>
+                  <path d="M21 3v6h-6"/>
+                </svg>
+                <span>Test connection</span>
+              </button>
+              <span id="test-pill" class="pill pill-checking" data-state="idle">
+                <span class="dot" aria-hidden="true"></span>
+                <span class="pill-text" id="test-pill-text">Not checked</span>
+              </span>
+            </div>
+            <p id="test-detail" class="onb-hint"></p>
+          </li>
+        </ol>
+      </article>
+
+      <!-- Step 3: Defaults -->
+      <article class="onb-card glass" data-step="3">
+        <div class="onb-art onb-art-sm">
+          <svg viewBox="0 0 240 140" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="28" y="32" width="184" height="76" rx="10" opacity="0.42"/>
+            <path d="M44 56h120M44 76h90M44 92h60"/>
+            <rect x="44" y="50" width="14" height="12" rx="3" opacity="0.6"/>
+            <rect x="44" y="86" width="14" height="12" rx="3" opacity="0.6"/>
+          </svg>
+        </div>
+        <h2 class="onb-title">Pick a default deck and note type.</h2>
+        <p class="onb-lede">
+          Captures land here unless a per-site rule overrides them. You can
+          change this any time in Settings.
+        </p>
+        <div class="onb-fields">
+          <label class="onb-field">
+            <span class="onb-field-label">Default deck</span>
+            <select id="onb-deck" class="select"></select>
+          </label>
+          <label class="onb-field">
+            <span class="onb-field-label">Default note type</span>
+            <select id="onb-model" class="select"></select>
+          </label>
+        </div>
+        <p id="onb-defaults-hint" class="onb-hint">
+          Connect to Anki first (Step 2) to populate these menus.
+        </p>
+        <div class="onb-status-row" style="justify-content: flex-end;">
+          <button id="onb-save-defaults" class="btn btn-primary btn-sm" type="button" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <span>Save defaults</span>
+          </button>
+        </div>
+      </article>
+
+      <!-- Step 4: Try a capture -->
+      <article class="onb-card glass" data-step="4">
+        <div class="onb-art onb-art-sm">
+          <svg viewBox="0 0 240 140" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 40h140a8 8 0 0 1 8 8v44a8 8 0 0 1-8 8H20z" opacity="0.4"/>
+            <path d="M40 60h100M40 76h74M40 92h54" opacity="0.85"/>
+            <rect x="64" y="68" width="56" height="14" fill="currentColor" opacity="0.18" rx="2"/>
+            <path d="M180 50l32 18-16 4 8 18-6 4-10-18-12 10z"/>
+          </svg>
+        </div>
+        <h2 class="onb-title">You're ready. Try a capture.</h2>
+        <p class="onb-lede">
+          Highlight text anywhere on the web, then send it:
+        </p>
+        <ul class="onb-tries">
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="6" width="18" height="12" rx="2"/>
+              <path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/>
+            </svg>
+            <span>Press <kbd id="onb-shortcut">⌘⇧Y</kbd> on any page with a selection.</span>
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 7v5l3 3"/>
+            </svg>
+            <span>Right-click → <em>Send to Anki</em>, <em>Send to Anki as Cloze</em>, or <em>Edit &amp; Send…</em></span>
+          </li>
+          <li>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="14" rx="2"/>
+              <path d="M3 12h18M12 4v14"/>
+            </svg>
+            <span>Click the toolbar icon for the popup — recent cards, batch, sync status.</span>
+          </li>
+        </ul>
+        <p class="onb-hint">
+          Want to fine-tune templates, per-site rules, or the connection?
+          Open the <a id="onb-open-options" href="#">extension settings</a>.
+        </p>
+      </article>
+    </section>
+
+    <footer class="onb-foot">
+      <button id="back-btn" class="btn btn-ghost" type="button" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+        <span>Back</span>
+      </button>
+      <span id="step-indicator" class="onb-foot-text">Step 1 of 4</span>
+      <button id="next-btn" class="btn btn-primary" type="button">
+        <span id="next-label">Continue</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 6l6 6-6 6"/>
+        </svg>
+      </button>
+    </footer>
+  </main>
+
+  <script type="module" src="onboarding.js"></script>
+</body>
+</html>

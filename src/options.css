@@ -328,3 +328,7 @@ body[data-theme="light"] .glass {
 .connection-test[data-state="checking"] { color: rgb(var(--accent)); }
 .connection-test[data-state="ok"] { color: rgb(var(--ok, 60 200 140)); }
 .connection-test[data-state="bad"] { color: rgb(var(--bad, 240 80 100)); }
+
+/* Small button variant — used by the "Replay tutorial" footer action. */
+.btn-sm { padding: 6px 10px; font-size: 12px; border-radius: 9px; }
+#appearance-card .card-foot { margin-top: 12px; }
