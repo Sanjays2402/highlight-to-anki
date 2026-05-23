@@ -20,6 +20,12 @@ const els = {
   saveState: document.getElementById("save-state"),
   empty: document.getElementById("empty-state"),
   card: document.getElementById("defaults-card"),
+  ankiHost: document.getElementById("anki-host"),
+  ankiPort: document.getElementById("anki-port"),
+  connectionUrl: document.getElementById("connection-url"),
+  connectionTest: document.getElementById("connection-test"),
+  testConnection: document.getElementById("test-connection-btn"),
+  resetConnection: document.getElementById("reset-connection-btn"),
   templatesList: document.getElementById("templates-list"),
   templatesEmpty: document.getElementById("templates-empty"),
   templatesSaveState: document.getElementById("templates-save-state"),
@@ -31,7 +37,7 @@ const els = {
 };
 
 const state = {
-  settings: { defaultDeck: "", defaultModel: "", clozeModel: "", fieldTemplates: {}, siteRules: [] },
+  settings: { defaultDeck: "", defaultModel: "", clozeModel: "", fieldTemplates: {}, siteRules: [], ankiHost: "127.0.0.1", ankiPort: 8765 },
   decks: [],
   models: [],
   dirty: false,
@@ -104,6 +110,8 @@ async function loadSettings() {
           ? reply.payload.fieldTemplates
           : {},
         siteRules: Array.isArray(reply.payload.siteRules) ? reply.payload.siteRules : [],
+        ankiHost: reply.payload.ankiHost || "127.0.0.1",
+        ankiPort: Number.isFinite(reply.payload.ankiPort) ? reply.payload.ankiPort : 8765,
       };
       state.templates = Object.entries(state.settings.fieldTemplates).map(([deck, tpl]) => ({
         deck,
@@ -185,6 +193,8 @@ async function save() {
       clozeModel: els.clozeModel ? els.clozeModel.value : "",
       fieldTemplates: templatesToMap(),
       siteRules: siteRulesToList(),
+      ankiHost: els.ankiHost ? els.ankiHost.value : undefined,
+      ankiPort: els.ankiPort ? els.ankiPort.value : undefined,
     });
     if (reply && reply.ok) {
       state.settings.defaultDeck = reply.payload.defaultDeck;
@@ -192,6 +202,11 @@ async function save() {
       state.settings.clozeModel = reply.payload.clozeModel || "";
       state.settings.fieldTemplates = reply.payload.fieldTemplates || {};
       state.settings.siteRules = Array.isArray(reply.payload.siteRules) ? reply.payload.siteRules : [];
+      state.settings.ankiHost = reply.payload.ankiHost || "127.0.0.1";
+      state.settings.ankiPort = Number.isFinite(reply.payload.ankiPort) ? reply.payload.ankiPort : 8765;
+      if (els.ankiHost) els.ankiHost.value = state.settings.ankiHost;
+      if (els.ankiPort) els.ankiPort.value = String(state.settings.ankiPort);
+      updateConnectionUrl();
       state.dirty = false;
       setSaveState("saved", "Saved");
       setTemplatesSaveState("saved", "Saved");
@@ -211,8 +226,72 @@ els.model.addEventListener("change", onChange);
 if (els.clozeModel) els.clozeModel.addEventListener("change", onChange);
 els.save.addEventListener("click", save);
 els.refresh.addEventListener("click", refresh);
+if (els.ankiHost) {
+  els.ankiHost.addEventListener("input", () => { onChange(); updateConnectionUrl(); });
+}
+if (els.ankiPort) {
+  els.ankiPort.addEventListener("input", () => { onChange(); updateConnectionUrl(); });
+}
+if (els.testConnection) els.testConnection.addEventListener("click", testConnection);
+if (els.resetConnection) els.resetConnection.addEventListener("click", resetConnection);
 if (els.addTemplate) els.addTemplate.addEventListener("click", addTemplate);
 if (els.addSiteRule) els.addSiteRule.addEventListener("click", addSiteRule);
+
+function normaliseHostInput(raw) {
+  let h = String(raw == null ? "" : raw).trim();
+  if (!h) return "";
+  h = h.replace(/^https?:\/\//i, "");
+  h = h.split("/")[0].split("?")[0];
+  h = h.replace(/:\d+$/, "");
+  return h.toLowerCase();
+}
+
+function currentConnection() {
+  const host = normaliseHostInput(els.ankiHost ? els.ankiHost.value : "") || "127.0.0.1";
+  let port = els.ankiPort ? Number(els.ankiPort.value) : 8765;
+  if (!Number.isFinite(port) || port < 1 || port > 65535) port = 8765;
+  return { host, port, url: `http://${host}:${port}` };
+}
+
+function updateConnectionUrl() {
+  if (!els.connectionUrl) return;
+  els.connectionUrl.textContent = currentConnection().url;
+}
+
+function setConnectionTestState(stateName, text) {
+  if (!els.connectionTest) return;
+  els.connectionTest.dataset.state = stateName || "";
+  els.connectionTest.textContent = text || "";
+}
+
+async function testConnection() {
+  if (!els.testConnection) return;
+  const conn = currentConnection();
+  els.testConnection.disabled = true;
+  setConnectionTestState("checking", "Testing…");
+  try {
+    const reply = await sendMsg("h2a:test-connection", { ankiHost: conn.host, ankiPort: conn.port });
+    const payload = reply && reply.ok ? reply.payload : null;
+    if (payload && payload.ok) {
+      setConnectionTestState("ok", `Connected · v${payload.version}`);
+    } else {
+      const err = payload && payload.error ? payload.error : "Unreachable";
+      setConnectionTestState("bad", err);
+    }
+  } catch (err) {
+    setConnectionTestState("bad", err && err.message ? err.message : "Unreachable");
+  } finally {
+    els.testConnection.disabled = false;
+  }
+}
+
+function resetConnection() {
+  if (els.ankiHost) els.ankiHost.value = "127.0.0.1";
+  if (els.ankiPort) els.ankiPort.value = "8765";
+  updateConnectionUrl();
+  setConnectionTestState("", "");
+  onChange();
+}
 
 function templatesToMap() {
   const out = {};
@@ -522,5 +601,8 @@ for (const btn of document.querySelectorAll(".theme-btn")) {
 
 (async () => {
   await loadSettings();
+  if (els.ankiHost) els.ankiHost.value = state.settings.ankiHost || "127.0.0.1";
+  if (els.ankiPort) els.ankiPort.value = String(state.settings.ankiPort || 8765);
+  updateConnectionUrl();
   await refresh();
 })();

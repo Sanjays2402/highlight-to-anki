@@ -368,4 +368,45 @@ if (!popupCss.includes(".toast") || !popupCss.includes(".toast-undo")) {
   console.error("popup.css must style .toast and .toast-undo"); process.exit(1);
 }
 
+// AnkiConnect connection settings (host/port) feature.
+if (!anki.includes("export function buildAnkiConnectUrl") || !anki.includes("export function normaliseAnkiHost") || !anki.includes("export function normaliseAnkiPort")) {
+  console.error("src/anki.js must export buildAnkiConnectUrl, normaliseAnkiHost, normaliseAnkiPort"); process.exit(1);
+}
+const { buildAnkiConnectUrl, normaliseAnkiHost, normaliseAnkiPort } = await import("../src/anki.js");
+if (buildAnkiConnectUrl("", "") !== "http://127.0.0.1:8765") {
+  console.error("buildAnkiConnectUrl: empty inputs must fall back to default"); process.exit(1);
+}
+if (buildAnkiConnectUrl("https://Anki.local/", 9000) !== "http://anki.local:9000") {
+  console.error("buildAnkiConnectUrl: should strip scheme/path + lowercase host"); process.exit(1);
+}
+if (buildAnkiConnectUrl("example.com:7000", "9000") !== "http://example.com:9000") {
+  console.error("buildAnkiConnectUrl: explicit port arg should beat embedded host port"); process.exit(1);
+}
+if (normaliseAnkiPort("abc") !== null || normaliseAnkiPort(0) !== null || normaliseAnkiPort(70000) !== null) {
+  console.error("normaliseAnkiPort: invalid ports should return null"); process.exit(1);
+}
+if (normaliseAnkiPort(" 8765 ") !== 8765) { console.error("normaliseAnkiPort: should parse trimmed numeric strings"); process.exit(1); }
+if (normaliseAnkiHost("  HTTP://Foo.Bar/baz?x=1  ") !== "foo.bar") {
+  console.error("normaliseAnkiHost: should strip scheme, path, query, and lowercase"); process.exit(1);
+}
+if (!bg.includes("ankiHost") || !bg.includes("ankiPort") || !bg.includes("buildAnkiConnectUrl")) {
+  console.error("background.js must persist ankiHost/ankiPort and route AnkiConnect via buildAnkiConnectUrl"); process.exit(1);
+}
+if (!bg.includes("h2a:test-connection")) {
+  console.error("background.js must handle h2a:test-connection"); process.exit(1);
+}
+if (!bg.includes("ankiUrlFromSettings")) {
+  console.error("background.js must derive ankiUrl from settings via ankiUrlFromSettings"); process.exit(1);
+}
+if (!optHtml.includes("anki-host") || !optHtml.includes("anki-port") || !optHtml.includes("connection-card") || !optHtml.includes("Test connection")) {
+  console.error("options.html must render the Connection card with host/port inputs and a Test connection button"); process.exit(1);
+}
+if (!optJs.includes("ankiHost") || !optJs.includes("ankiPort") || !optJs.includes("h2a:test-connection") || !optJs.includes("updateConnectionUrl")) {
+  console.error("options.js must wire host/port inputs, updateConnectionUrl, and h2a:test-connection"); process.exit(1);
+}
+const optCss = fs.readFileSync("src/options.css", "utf8");
+if (!optCss.includes(".connection-grid") || !optCss.includes(".connection-url")) {
+  console.error("options.css must style the connection card (connection-grid + connection-url)"); process.exit(1);
+}
+
 console.log("\u2713 smoke ok");

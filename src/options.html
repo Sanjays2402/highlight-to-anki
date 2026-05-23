@@ -30,6 +30,43 @@
       </span>
     </header>
 
+    <section class="card glass" id="connection-card">
+      <div class="card-head">
+        <span class="card-label">Connection</span>
+        <span class="card-hint">AnkiConnect endpoint</span>
+      </div>
+      <p class="hint" style="margin-top: -4px;">Default is <code>127.0.0.1:8765</code> — the AnkiConnect add-on's loopback listener. Override only if you run Anki on another machine, port, or container.</p>
+      <div class="connection-grid">
+        <div class="field">
+          <label for="anki-host">Host</label>
+          <input id="anki-host" type="text" placeholder="127.0.0.1" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="anki-port">Port</label>
+          <input id="anki-port" type="number" min="1" max="65535" placeholder="8765" spellcheck="false" autocomplete="off">
+        </div>
+      </div>
+      <div class="connection-meta">
+        <span class="connection-url" id="connection-url" aria-live="polite">http://127.0.0.1:8765</span>
+        <span class="connection-test" id="connection-test" data-state="" aria-live="polite"></span>
+      </div>
+      <div class="actions">
+        <button id="reset-connection-btn" class="btn btn-ghost" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/>
+            <path d="M21 3v5h-5"/>
+          </svg>
+          <span>Reset to default</span>
+        </button>
+        <button id="test-connection-btn" class="btn btn-ghost" type="button">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h6l2-4 2 8 2-4h2"/>
+          </svg>
+          <span>Test connection</span>
+        </button>
+      </div>
+    </section>
+
     <section class="card glass" id="defaults-card">
       <div class="card-head">
         <span class="card-label">Defaults</span>

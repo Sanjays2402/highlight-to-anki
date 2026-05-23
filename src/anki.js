@@ -7,6 +7,63 @@
 
 export const ANKI_CONNECT_URL = "http://127.0.0.1:8765";
 export const ANKI_CONNECT_VERSION = 6;
+export const DEFAULT_ANKI_HOST = "127.0.0.1";
+export const DEFAULT_ANKI_PORT = 8765;
+
+/**
+ * Normalise a user-supplied AnkiConnect host. Strips whitespace, any
+ * surrounding `http(s)://` scheme, a trailing slash, and an explicit
+ * `:port` suffix so the host can be recombined cleanly with the port
+ * value managed alongside it. Returns `""` when nothing usable was
+ * supplied so callers can fall back to {@link DEFAULT_ANKI_HOST}.
+ *
+ * @param {string|undefined|null} raw
+ * @returns {string}
+ */
+export function normaliseAnkiHost(raw) {
+  if (raw == null) return "";
+  let h = String(raw).trim();
+  if (!h) return "";
+  h = h.replace(/^https?:\/\//i, "");
+  // Drop any trailing path/query so we only retain the host portion.
+  h = h.split("/")[0].split("?")[0];
+  // Trim a trailing `:port` so the port input is the single source of
+  // truth; callers can still pass a port separately.
+  h = h.replace(/:\d+$/, "");
+  return h.toLowerCase();
+}
+
+/**
+ * Coerce a port value to an integer in the valid TCP range. Returns
+ * `null` when the input is missing or out of bounds so callers can
+ * fall back to {@link DEFAULT_ANKI_PORT}.
+ *
+ * @param {number|string|undefined|null} raw
+ * @returns {number|null}
+ */
+export function normaliseAnkiPort(raw) {
+  if (raw === "" || raw == null) return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  if (!Number.isFinite(n)) return null;
+  const i = Math.trunc(n);
+  if (i < 1 || i > 65535) return null;
+  return i;
+}
+
+/**
+ * Build the full AnkiConnect endpoint URL from a host + port pair.
+ * Falls back to the documented defaults when either side is missing
+ * or invalid so a single empty field never bricks the extension.
+ *
+ * @param {string|undefined|null} host
+ * @param {number|string|undefined|null} port
+ * @returns {string}
+ */
+export function buildAnkiConnectUrl(host, port) {
+  const h = normaliseAnkiHost(host) || DEFAULT_ANKI_HOST;
+  const p = normaliseAnkiPort(port) ?? DEFAULT_ANKI_PORT;
+  return `http://${h}:${p}`;
+}
 const DEFAULT_TIMEOUT_MS = 2500;
 
 /**

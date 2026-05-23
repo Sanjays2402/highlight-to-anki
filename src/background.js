@@ -23,6 +23,11 @@ import {
   hostnameTag,
   resolveFieldNames,
   resolveSiteDeck,
+  buildAnkiConnectUrl,
+  normaliseAnkiHost,
+  normaliseAnkiPort,
+  DEFAULT_ANKI_HOST,
+  DEFAULT_ANKI_PORT,
 } from "./anki.js";
 
 const TAG = "[highlight-to-anki:bg]";
@@ -45,6 +50,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   fieldTemplates: {},
   siteRules: [],
   theme: "auto",
+  ankiHost: DEFAULT_ANKI_HOST,
+  ankiPort: DEFAULT_ANKI_PORT,
   updatedAt: null,
 });
 const THEME_PREFERENCES = new Set(["auto", "dark", "light"]);
@@ -157,10 +164,29 @@ async function saveSettings(patch) {
       ? sanitiseSiteRules(patch.siteRules)
       : (Array.isArray(current.siteRules) ? current.siteRules : []),
     theme: THEME_PREFERENCES.has(patch.theme) ? patch.theme : (current.theme || "auto"),
+    ankiHost: patch.ankiHost !== undefined
+      ? (normaliseAnkiHost(patch.ankiHost) || DEFAULT_ANKI_HOST)
+      : (normaliseAnkiHost(current.ankiHost) || DEFAULT_ANKI_HOST),
+    ankiPort: patch.ankiPort !== undefined
+      ? (normaliseAnkiPort(patch.ankiPort) ?? DEFAULT_ANKI_PORT)
+      : (normaliseAnkiPort(current.ankiPort) ?? DEFAULT_ANKI_PORT),
     updatedAt: new Date().toISOString(),
   };
   await area.set({ [SETTINGS_KEY]: next });
   return next;
+}
+
+/**
+ * Resolve the AnkiConnect endpoint URL for a settings snapshot. Pure
+ * helper around {@link buildAnkiConnectUrl} so callers don't need to
+ * import normalisers themselves.
+ *
+ * @param {{ ankiHost?: string, ankiPort?: number|string }|undefined|null} settings
+ * @returns {string}
+ */
+function ankiUrlFromSettings(settings) {
+  const s = settings || {};
+  return buildAnkiConnectUrl(s.ankiHost, s.ankiPort);
 }
 
 /** Create (or recreate) the context menu entry. */
@@ -299,6 +325,7 @@ async function sendBatch() {
         tags,
         frontField: batchFields.frontField,
         backField: batchFields.backField,
+        url: ankiUrlFromSettings(settings),
       });
       sent += 1;
       console.log(TAG, "batch sent note", noteId);
@@ -492,6 +519,7 @@ async function sendCaptureToAnki(entry) {
       tags,
       frontField: fields.frontField,
       backField: fields.backField,
+      url: ankiUrlFromSettings(settings),
     });
     const patched = await patchPending(entry.id, { status: "sent", noteId, error: null, sentAt: new Date().toISOString() });
     await appendHistory(patched || { ...entry, noteId }, { mode: "basic", noteId, deck: targetDeck });
@@ -548,6 +576,7 @@ async function sendCaptureAsImage(entry) {
       tags,
       frontField: imgFields.frontField,
       backField: imgFields.backField,
+      url: ankiUrlFromSettings(settings),
     });
     const patched = await patchPending(entry.id, {
       status: "sent",
@@ -609,6 +638,7 @@ async function sendCaptureAsCloze(entry) {
       tags,
       textField: clozeFields.textField,
       extraField: clozeFields.extraField,
+      url: ankiUrlFromSettings(settings),
     });
     const patched = await patchPending(entry.id, {
       status: "sent",
@@ -698,6 +728,7 @@ async function sendEditedCapture(edits) {
         tags: baseTags,
         textField: editFields.textField,
         extraField: editFields.extraField,
+        url: ankiUrlFromSettings(settings),
       });
     } else {
       noteId = await ankiAddNote({
@@ -708,6 +739,7 @@ async function sendEditedCapture(edits) {
         tags: baseTags,
         frontField: editFields.frontField,
         backField: editFields.backField,
+        url: ankiUrlFromSettings(settings),
       });
     }
     const patched = await patchPending(entry.id, {
@@ -878,14 +910,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg.type === "h2a:anki-health") {
-    ankiHealthCheck().then((status) => sendResponse({ ok: true, payload: status }));
+    (async () => {
+      const settings = await loadSettings();
+      const url = ankiUrlFromSettings(settings);
+      const status = await ankiHealthCheck({ url });
+      sendResponse({ ok: true, payload: status });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:test-connection") {
+    (async () => {
+      const payload = msg.payload || {};
+      const url = buildAnkiConnectUrl(payload.ankiHost, payload.ankiPort);
+      const status = await ankiHealthCheck({ url, timeoutMs: 2500 });
+      sendResponse({ ok: true, payload: { ...status, url } });
+    })();
     return true;
   }
   if (msg.type === "h2a:find-duplicates") {
     (async () => {
       const payload = msg.payload || {};
       try {
-        const result = await ankiFindDuplicates({ deck: payload.deck, text: payload.text });
+        const settings = await loadSettings();
+        const url = ankiUrlFromSettings(settings);
+        const result = await ankiFindDuplicates({ deck: payload.deck, text: payload.text, url });
         sendResponse({ ok: true, payload: result });
       } catch (err) {
         sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
@@ -894,15 +942,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg.type === "h2a:list-decks") {
-    ankiDeckNames()
-      .then((names) => sendResponse({ ok: true, payload: names }))
-      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+    (async () => {
+      try {
+        const settings = await loadSettings();
+        const names = await ankiDeckNames({ url: ankiUrlFromSettings(settings) });
+        sendResponse({ ok: true, payload: names });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    })();
     return true;
   }
   if (msg.type === "h2a:list-models") {
-    ankiModelNames()
-      .then((names) => sendResponse({ ok: true, payload: names }))
-      .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+    (async () => {
+      try {
+        const settings = await loadSettings();
+        const names = await ankiModelNames({ url: ankiUrlFromSettings(settings) });
+        sendResponse({ ok: true, payload: names });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    })();
     return true;
   }
   if (msg.type === "h2a:get-settings") {
@@ -1019,7 +1079,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         return;
       }
       try {
-        await ankiDeleteNotes([noteId]);
+        const settings = await loadSettings();
+        await ankiDeleteNotes([noteId], { url: ankiUrlFromSettings(settings) });
       } catch (err) {
         sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
         return;
