@@ -17,6 +17,9 @@ import {
   addImageNote as ankiAddImageNote,
   deleteNotes as ankiDeleteNotes,
   findDuplicates as ankiFindDuplicates,
+  fetchReviewQueue as ankiFetchReviewQueue,
+  answerCards as ankiAnswerCards,
+  cardsInfo as ankiCardsInfo,
   buildCardFields,
   buildClozeFields,
   buildImageCardFields,
@@ -1621,6 +1624,53 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendBatch()
       .then((result) => sendResponse({ ok: result.ok, payload: result }))
       .catch((err) => sendResponse({ ok: false, error: err && err.message ? err.message : String(err) }));
+    return true;
+  }
+  if (msg.type === "h2a:review-queue") {
+    (async () => {
+      try {
+        const settings = await loadSettings();
+        const deck = (msg.payload && typeof msg.payload.deck === "string")
+          ? msg.payload.deck.trim()
+          : (settings.defaultDeck || "");
+        const payload = await ankiFetchReviewQueue({
+          deck,
+          url: ankiUrlFromSettings(settings),
+          timeoutMs: 4000,
+        });
+        sendResponse({ ok: true, payload });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:review-card") {
+    (async () => {
+      try {
+        const settings = await loadSettings();
+        const cardId = msg.payload && msg.payload.cardId;
+        const info = await ankiCardsInfo([cardId], { url: ankiUrlFromSettings(settings), timeoutMs: 4000 });
+        sendResponse({ ok: true, payload: info && info[0] ? info[0] : null });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:review-answer") {
+    (async () => {
+      try {
+        const settings = await loadSettings();
+        const payload = msg.payload || {};
+        const cardId = typeof payload.cardId === "number" ? payload.cardId : Number(payload.cardId);
+        const ease = typeof payload.ease === "number" ? payload.ease : Number(payload.ease);
+        const n = await ankiAnswerCards([{ cardId, ease }], { url: ankiUrlFromSettings(settings), timeoutMs: 4000 });
+        sendResponse({ ok: n > 0, payload: { graded: n, cardId, ease } });
+      } catch (err) {
+        sendResponse({ ok: false, error: err && err.message ? err.message : String(err) });
+      }
+    })();
     return true;
   }
   if (msg.type === "h2a:open-onboarding") {

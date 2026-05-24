@@ -1209,6 +1209,109 @@ export async function modelNames(opts = {}) {
 }
 
 /**
+ * Build an AnkiConnect search query for cards that are due in a given
+ * deck. When no deck is supplied we fall back to the global queue so
+ * the popup mini-reviewer can serve users who don't pin a default
+ * deck. The query is intentionally narrow — `is:due` excludes new and
+ * suspended cards — so the reviewer surfaces what Anki itself would
+ * show in the next review session.
+ *
+ * @param {{ deck?: string }} args
+ * @returns {string}
+ */
+export function buildDueQuery(args) {
+  const a = args || {};
+  const deck = (a.deck || "").trim();
+  if (!deck) return "is:due";
+  const safeDeck = deck.replace(/["\\]+/g, "");
+  return `deck:"${safeDeck}" is:due`;
+}
+
+/**
+ * Run an AnkiConnect `findCards` query. Returns the array of card ids
+ * (never note ids) so callers can pass them straight to `cardsInfo`
+ * and `answerCards`.
+ *
+ * @param {string} query
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<number[]>}
+ */
+export async function findCards(query, opts = {}) {
+  const q = String(query == null ? "" : query).trim();
+  if (!q) return [];
+  const result = await invoke("findCards", { query: q }, opts);
+  if (!Array.isArray(result)) throw new Error("findCards: unexpected payload");
+  return result.filter((n) => Number.isFinite(n));
+}
+
+/**
+ * Fetch metadata for one or more cards. We use this in the mini
+ * reviewer to pull the rendered question/answer HTML straight from
+ * Anki, so what the user sees in the popup matches what Anki itself
+ * would show during a normal review session.
+ *
+ * @param {Array<number>} cardIds
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<Array<object>>}
+ */
+export async function cardsInfo(cardIds, opts = {}) {
+  const ids = (Array.isArray(cardIds) ? cardIds : [])
+    .map((n) => (typeof n === "number" ? n : Number(n)))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!ids.length) return [];
+  const result = await invoke("cardsInfo", { cards: ids }, opts);
+  return Array.isArray(result) ? result : [];
+}
+
+/**
+ * Grade one or more cards in Anki's scheduler. `ease` maps to the
+ * usual 1/2/3/4 (Again / Hard / Good / Easy). Returns the number of
+ * cards AnkiConnect confirmed.
+ *
+ * @param {Array<{ cardId: number, ease: number }>} entries
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<number>}
+ */
+export async function answerCards(entries, opts = {}) {
+  const list = (Array.isArray(entries) ? entries : [])
+    .map((e) => {
+      if (!e) return null;
+      const cardId = typeof e.cardId === "number" ? e.cardId : Number(e.cardId);
+      const ease = typeof e.ease === "number" ? e.ease : Number(e.ease);
+      if (!Number.isFinite(cardId) || cardId <= 0) return null;
+      if (!Number.isFinite(ease) || ease < 1 || ease > 4) return null;
+      return { cardId, ease: Math.trunc(ease) };
+    })
+    .filter(Boolean);
+  if (!list.length) return 0;
+  const result = await invoke("answerCards", { answers: list }, opts);
+  if (Array.isArray(result)) return result.filter(Boolean).length;
+  return list.length;
+}
+
+/**
+ * Convenience wrapper that resolves due cards for a deck into a
+ * structured payload ready for the popup: includes the queue
+ * length plus a hydrated first card (question + answer HTML) so the
+ * UI can render immediately without a follow-up round trip.
+ *
+ * @param {{ deck?: string, timeoutMs?: number, url?: string }} args
+ * @returns {Promise<{ deck: string, query: string, cardIds: number[], total: number, current: object|null }>}
+ */
+export async function fetchReviewQueue(args) {
+  const a = args || {};
+  const deck = (a.deck || "").trim();
+  const query = buildDueQuery({ deck });
+  const ids = await findCards(query, { timeoutMs: a.timeoutMs, url: a.url });
+  let current = null;
+  if (ids.length > 0) {
+    const info = await cardsInfo([ids[0]], { timeoutMs: a.timeoutMs, url: a.url });
+    if (info && info[0]) current = info[0];
+  }
+  return { deck, query, cardIds: ids, total: ids.length, current };
+}
+
+/**
  * Lightweight health probe. Returns a structured status object the UI
  * can render without further branching.
  *

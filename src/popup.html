@@ -307,6 +307,51 @@
         </div>
       </div>
     </section>
+    <section class="card glass" id="review-card" aria-live="polite">
+      <div class="card-head">
+        <span class="card-label">Review</span>
+        <span class="pill pill-checking" id="review-pill" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text" id="review-count">0 due</span>
+        </span>
+      </div>
+      <div class="card-body" id="review-body">
+        <div class="empty" id="review-empty">
+          <svg class="empty-art" width="96" height="72" viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 50c8-18 30-26 48-18 12 6 22 4 30-2 10-8 22-2 22 12 0 14-14 22-30 24-26 3-58-2-66-6-10-4-10-4-4-10z" opacity="0.30"/>
+            <path d="M40 36h40v28H40z"/>
+            <path d="M48 44h24M48 52h16"/>
+            <path d="M60 28v8"/>
+            <circle cx="60" cy="24" r="4"/>
+          </svg>
+          <p class="empty-text" id="review-empty-text">Nothing due right now. Cards you send will queue up here for quick review when their next interval lands.</p>
+        </div>
+        <div class="review-stage" id="review-stage" hidden>
+          <div class="review-face" id="review-question" aria-label="Question"></div>
+          <div class="review-divider" id="review-divider" hidden aria-hidden="true"><span>Answer</span></div>
+          <div class="review-face review-answer" id="review-answer" hidden aria-label="Answer"></div>
+          <div class="kv kv-error" id="review-error-row" hidden>
+            <span class="k">Error</span>
+            <span class="v" id="review-error">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot review-foot">
+        <button id="review-reveal" class="btn btn-primary" type="button" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>Show answer</span>
+        </button>
+        <div class="review-grades" id="review-grades" hidden>
+          <button class="btn btn-grade btn-grade-1" type="button" data-ease="1">Again</button>
+          <button class="btn btn-grade btn-grade-2" type="button" data-ease="2">Hard</button>
+          <button class="btn btn-grade btn-grade-3" type="button" data-ease="3">Good</button>
+          <button class="btn btn-grade btn-grade-4" type="button" data-ease="4">Easy</button>
+        </div>
+      </div>
+    </section>
     <section class="card glass" id="recent-card" aria-live="polite">
       <div class="card-head">
         <span class="card-label">Recent</span>

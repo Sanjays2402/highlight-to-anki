@@ -36,7 +36,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Smart deduplication using fuzzy match (Levenshtein) not just exact
 - [x] Reading mode: distraction-free overlay before sending
 - [x] Per-deck color accents in popup card preview
-- [ ] Spaced-review queue: in-popup mini-reviewer for due cards via AnkiConnect
+- [x] Spaced-review queue: in-popup mini-reviewer for due cards via AnkiConnect
 - [ ] Selection translation: optional translation field with source language tag
 - [ ] PDF text capture: support text selection in chrome-extension PDF viewer
 - [ ] Audio TTS field: generate pronunciation audio for selection via SpeechSynthesis

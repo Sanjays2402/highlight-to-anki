@@ -86,6 +86,18 @@ const els = {
   statsSparkAxis: document.getElementById("stats-spark-axis"),
   statsDecks: document.getElementById("stats-decks"),
   statsTags: document.getElementById("stats-tags"),
+  reviewPill: document.getElementById("review-pill"),
+  reviewCount: document.getElementById("review-count"),
+  reviewEmpty: document.getElementById("review-empty"),
+  reviewEmptyText: document.getElementById("review-empty-text"),
+  reviewStage: document.getElementById("review-stage"),
+  reviewQuestion: document.getElementById("review-question"),
+  reviewAnswer: document.getElementById("review-answer"),
+  reviewDivider: document.getElementById("review-divider"),
+  reviewErrorRow: document.getElementById("review-error-row"),
+  reviewError: document.getElementById("review-error"),
+  reviewReveal: document.getElementById("review-reveal"),
+  reviewGrades: document.getElementById("review-grades"),
 };
 
 /**
@@ -998,6 +1010,164 @@ els.previewSend?.addEventListener("click", async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Spaced-review queue
+// ---------------------------------------------------------------------------
+
+const reviewState = {
+  cardIds: [],
+  current: null,
+  revealed: false,
+  deck: "",
+  loading: false,
+};
+
+function setReviewPill(state, label) {
+  if (!els.reviewPill) return;
+  els.reviewPill.dataset.state = state;
+  els.reviewPill.className = `pill pill-${state}`;
+  if (els.reviewCount) els.reviewCount.textContent = label;
+}
+
+function stripCardHtml(html) {
+  // Anki returns the full card template including {{FrontSide}} and
+  // injected styling — strip stray <style>/<script> blocks but keep
+  // structural markup so cloze deletions, images, and code render.
+  return String(html == null ? "" : html)
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "");
+}
+
+function renderReviewCard(card) {
+  if (!card || !els.reviewQuestion) return;
+  els.reviewQuestion.innerHTML = stripCardHtml(card.question || "");
+  els.reviewAnswer.innerHTML = stripCardHtml(card.answer || "");
+  els.reviewAnswer.hidden = true;
+  els.reviewDivider.hidden = true;
+  els.reviewGrades.hidden = true;
+  if (els.reviewReveal) {
+    els.reviewReveal.disabled = false;
+    els.reviewReveal.hidden = false;
+  }
+  reviewState.revealed = false;
+  if (els.reviewErrorRow) els.reviewErrorRow.hidden = true;
+}
+
+function renderReviewState() {
+  const total = reviewState.cardIds.length;
+  if (total === 0) {
+    setReviewPill("idle", "0 due");
+    if (els.reviewEmpty) els.reviewEmpty.hidden = false;
+    if (els.reviewStage) els.reviewStage.hidden = true;
+    if (els.reviewReveal) {
+      els.reviewReveal.disabled = true;
+      els.reviewReveal.hidden = true;
+    }
+    if (els.reviewGrades) els.reviewGrades.hidden = true;
+    return;
+  }
+  setReviewPill("ok", `${total} due`);
+  if (els.reviewEmpty) els.reviewEmpty.hidden = true;
+  if (els.reviewStage) els.reviewStage.hidden = false;
+  if (reviewState.current) renderReviewCard(reviewState.current);
+}
+
+function showReviewError(msg) {
+  if (els.reviewErrorRow) els.reviewErrorRow.hidden = false;
+  if (els.reviewError) els.reviewError.textContent = msg;
+}
+
+async function loadReview() {
+  if (!els.reviewPill) return;
+  if (reviewState.loading) return;
+  reviewState.loading = true;
+  setReviewPill("checking", "Checking…");
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:review-queue" });
+    if (!reply || !reply.ok) {
+      setReviewPill("bad", "Offline");
+      if (els.reviewEmpty) els.reviewEmpty.hidden = false;
+      if (els.reviewStage) els.reviewStage.hidden = true;
+      if (els.reviewEmptyText && reply && reply.error) {
+        els.reviewEmptyText.textContent = `Couldn’t reach AnkiConnect: ${reply.error}`;
+      }
+      return;
+    }
+    const payload = reply.payload || {};
+    reviewState.cardIds = Array.isArray(payload.cardIds) ? payload.cardIds.slice() : [];
+    reviewState.current = payload.current || null;
+    reviewState.deck = payload.deck || "";
+    renderReviewState();
+  } catch (err) {
+    setReviewPill("bad", "Error");
+    showReviewError(err && err.message ? err.message : String(err));
+  } finally {
+    reviewState.loading = false;
+  }
+}
+
+async function advanceReview() {
+  reviewState.cardIds.shift();
+  reviewState.current = null;
+  reviewState.revealed = false;
+  if (reviewState.cardIds.length === 0) {
+    renderReviewState();
+    return;
+  }
+  // Hydrate the next card. Keep the pill alive while we fetch so the
+  // review surface doesn't flash empty between answers.
+  setReviewPill("checking", `${reviewState.cardIds.length} due`);
+  try {
+    const reply = await chrome.runtime.sendMessage({
+      type: "h2a:review-card",
+      payload: { cardId: reviewState.cardIds[0] },
+    });
+    if (reply && reply.ok && reply.payload) {
+      reviewState.current = reply.payload;
+    }
+  } catch (_err) { /* swallow, render below */ }
+  renderReviewState();
+}
+
+if (els.reviewReveal) {
+  els.reviewReveal.addEventListener("click", () => {
+    if (!reviewState.current) return;
+    reviewState.revealed = true;
+    els.reviewAnswer.hidden = false;
+    els.reviewDivider.hidden = false;
+    els.reviewGrades.hidden = false;
+    els.reviewReveal.hidden = true;
+  });
+}
+
+if (els.reviewGrades) {
+  els.reviewGrades.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-ease]");
+    if (!btn) return;
+    const ease = Number(btn.dataset.ease);
+    const card = reviewState.current;
+    if (!card || !Number.isFinite(ease)) return;
+    for (const b of els.reviewGrades.querySelectorAll("button")) b.disabled = true;
+    try {
+      const reply = await chrome.runtime.sendMessage({
+        type: "h2a:review-answer",
+        payload: { cardId: card.cardId, ease },
+      });
+      if (!reply || !reply.ok) {
+        showToast({ tone: "bad", title: "Review failed", message: (reply && reply.error) || "AnkiConnect rejected the grade" });
+      } else {
+        const labels = { 1: "Again", 2: "Hard", 3: "Good", 4: "Easy" };
+        showToast({ tone: "ok", title: `Graded ${labels[ease] || ease}`, message: `${reviewState.cardIds.length - 1} card(s) left in queue.` });
+      }
+    } catch (err) {
+      showToast({ tone: "bad", title: "Review failed", message: err && err.message ? err.message : String(err) });
+    } finally {
+      for (const b of els.reviewGrades.querySelectorAll("button")) b.disabled = false;
+      await advanceReview();
+    }
+  });
+}
+
 // Match system theme for the first paint.
 const themeCtl = initTheme({
   onChange: ({ preference }) => {
@@ -1017,6 +1187,7 @@ loadBatch();
 loadPins();
 loadHistory();
 loadSync();
+loadReview();
 loadSettings().then(loadInitialPreview);
 
 // Light polling while popup is open so in-flight sends animate without push.
