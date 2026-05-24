@@ -203,6 +203,44 @@
         </button>
       </div>
     </section>
+
+    <section class="card glass" id="pins-card" aria-live="polite">
+      <div class="card-head">
+        <span class="card-label">Pinned</span>
+        <span class="pill pill-checking" id="pins-pill" data-state="idle">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text" id="pins-count">0 pinned</span>
+        </span>
+      </div>
+      <div class="card-body" id="pins-body">
+        <div class="empty" id="pins-empty">
+          <svg class="empty-art" width="96" height="72" viewBox="0 0 120 90" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M14 50c8-18 30-26 48-18 12 6 22 4 30-2 10-8 22-2 22 12 0 14-14 22-30 24-26 3-58-2-66-6-10-4-10-4-4-10z" opacity="0.30"/>
+            <path d="M64 18l14 14-8 8-4-2-10 10-2 6-8 2 2-8 6-2 10-10-2-4 8-8z"/>
+            <path d="M44 56l-10 14"/>
+          </svg>
+          <p class="empty-text">Nothing pinned. Right-click a selection and choose <em>Pin Snippet</em> to save it for batch-send later.</p>
+        </div>
+        <ul class="pins-list" id="pins-list" hidden></ul>
+      </div>
+      <div class="card-foot pins-foot">
+        <button id="pins-clear" class="btn btn-ghost" type="button" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16"/>
+            <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+            <path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/>
+          </svg>
+          <span>Clear</span>
+        </button>
+        <button id="pins-to-batch" class="btn btn-primary" type="button" disabled title="Move all pinned snippets to the batch queue" aria-label="Move pinned snippets to batch">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h12"/>
+            <path d="M13 6l6 6-6 6"/>
+          </svg>
+          <span>Queue Batch</span>
+        </button>
+      </div>
+    </section>
     <section class="card glass" id="stats-card" aria-live="polite">
       <div class="card-head">
         <span class="card-label">Stats</span>

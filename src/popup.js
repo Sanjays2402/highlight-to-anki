@@ -38,6 +38,12 @@ const els = {
   batchSend: document.getElementById("batch-send"),
   batchErrorRow: document.getElementById("batch-error-row"),
   batchError: document.getElementById("batch-error"),
+  pinsPill: document.getElementById("pins-pill"),
+  pinsCount: document.getElementById("pins-count"),
+  pinsEmpty: document.getElementById("pins-empty"),
+  pinsList: document.getElementById("pins-list"),
+  pinsClear: document.getElementById("pins-clear"),
+  pinsToBatch: document.getElementById("pins-to-batch"),
   recentPill: document.getElementById("recent-pill"),
   recentCount: document.getElementById("recent-count"),
   recentEmpty: document.getElementById("recent-empty"),
@@ -498,7 +504,116 @@ async function sendBatch() {
 els.batchClear?.addEventListener("click", clearBatch);
 els.batchSend?.addEventListener("click", sendBatch);
 
+/** Render the pinned-snippets list. */
+function renderPins(items) {
+  const list = Array.isArray(items) ? items : [];
+  const n = list.length;
+  if (els.pinsCount) els.pinsCount.textContent = n === 1 ? "1 pinned" : `${n} pinned`;
+  if (els.pinsPill) els.pinsPill.dataset.state = n > 0 ? "ok" : "idle";
+  if (els.pinsEmpty) els.pinsEmpty.hidden = n > 0;
+  if (els.pinsList) {
+    els.pinsList.hidden = n === 0;
+    els.pinsList.innerHTML = "";
+    for (const row of list) {
+      const li = document.createElement("li");
+      li.className = "pin-item";
+      li.dataset.id = row.id;
+
+      const text = document.createElement("span");
+      text.className = "pin-item-text";
+      const preview = row.text || row.title || row.imageUrl || "(no text)";
+      text.textContent = preview.slice(0, 220);
+      li.appendChild(text);
+
+      const meta = document.createElement("span");
+      meta.className = "pin-item-meta";
+      const when = document.createElement("span");
+      when.textContent = fmtRelative(row.pinnedAt);
+      meta.appendChild(when);
+      if (row.hostname) {
+        const sep = document.createElement("span");
+        sep.className = "dot-sep";
+        sep.textContent = "\u00B7";
+        meta.appendChild(sep);
+        const host = document.createElement("span");
+        host.textContent = row.hostname;
+        meta.appendChild(host);
+      }
+      li.appendChild(meta);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "pin-item-remove";
+      remove.title = "Remove pin";
+      remove.setAttribute("aria-label", "Remove pin");
+      remove.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+      remove.addEventListener("click", () => removePin(row.id));
+      li.appendChild(remove);
+
+      els.pinsList.appendChild(li);
+    }
+  }
+  if (els.pinsClear) els.pinsClear.disabled = n === 0;
+  if (els.pinsToBatch) els.pinsToBatch.disabled = n === 0;
+}
+
+async function loadPins() {
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:list-pins" });
+    if (reply && reply.ok) renderPins(reply.payload || []);
+  } catch (err) {
+    console.warn(TAG, "pins load failed:", err);
+  }
+}
+
+async function clearPins() {
+  try {
+    await chrome.runtime.sendMessage({ type: "h2a:clear-pins" });
+  } catch (err) {
+    console.warn(TAG, "pins clear failed:", err);
+  }
+  renderPins([]);
+}
+
+async function removePin(id) {
+  if (!id) return;
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:remove-pin", payload: { id } });
+    if (reply && reply.ok) renderPins(reply.payload || []);
+  } catch (err) {
+    console.warn(TAG, "pin remove failed:", err);
+  }
+}
+
+async function pinsToBatch() {
+  if (els.pinsToBatch) els.pinsToBatch.disabled = true;
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:send-pins-to-batch" });
+    if (reply && reply.ok) {
+      const payload = reply.payload || {};
+      renderPins(payload.pins || []);
+      loadBatch();
+      showToast({
+        tone: "ok",
+        title: payload.moved === 1 ? "1 pin queued" : `${payload.moved || 0} pins queued`,
+        message: "Moved to the batch queue. Hit Send All to ship them.",
+      });
+    }
+  } catch (err) {
+    console.warn(TAG, "pins-to-batch failed:", err);
+    showToast({ tone: "bad", title: "Queue failed", message: err && err.message ? err.message : "Unknown error" });
+  } finally {
+    if (els.pinsToBatch) els.pinsToBatch.disabled = false;
+  }
+}
+
+els.pinsClear?.addEventListener("click", clearPins);
+els.pinsToBatch?.addEventListener("click", pinsToBatch);
+
 chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === "h2a:pins-updated") {
+    loadPins();
+  }
   if (msg && msg.type === "h2a:batch-updated") {
     loadBatch();
     loadSync();
@@ -861,6 +976,7 @@ for (const btn of document.querySelectorAll(".theme-btn")) {
 
 checkHealth();
 loadBatch();
+loadPins();
 loadHistory();
 loadSync();
 loadInitialPreview();

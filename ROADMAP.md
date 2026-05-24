@@ -32,7 +32,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Multi-language detection and auto-tag by detected language
 - [x] Custom CSS injection for Anki card styling per deck
 - [x] Selection context: capture surrounding sentence as additional field
-- [ ] Pinned snippets: save selections for batch-send later
+- [x] Pinned snippets: save selections for batch-send later
 - [ ] Smart deduplication using fuzzy match (Levenshtein) not just exact
 - [ ] Reading mode: distraction-free overlay before sending
 - [ ] Per-deck color accents in popup card preview

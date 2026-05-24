@@ -243,10 +243,13 @@ body[data-theme="light"] .glass::after {
 
 /* Custom scrollbars for inner lists --------------------------------------- */
 .batch-list::-webkit-scrollbar,
+.pins-list::-webkit-scrollbar,
 .recent-list::-webkit-scrollbar { width: 8px; }
 .batch-list::-webkit-scrollbar-track,
+.pins-list::-webkit-scrollbar-track,
 .recent-list::-webkit-scrollbar-track { background: transparent; }
 .batch-list::-webkit-scrollbar-thumb,
+.pins-list::-webkit-scrollbar-thumb,
 .recent-list::-webkit-scrollbar-thumb {
   background: var(--line-strong);
   border-radius: 999px;
@@ -254,6 +257,7 @@ body[data-theme="light"] .glass::after {
   background-clip: padding-box;
 }
 .batch-list::-webkit-scrollbar-thumb:hover,
+.pins-list::-webkit-scrollbar-thumb:hover,
 .recent-list::-webkit-scrollbar-thumb:hover { background: rgb(var(--accent) / 0.5); background-clip: padding-box; }
 .kv-error .v { color: rgb(var(--bad)); }
 
@@ -314,6 +318,71 @@ body[data-theme="light"] .glass::after {
 .batch-item-err {
   font-size: 10.5px;
   color: rgb(var(--bad));
+}
+
+/* Pinned snippets ---------------------------------------------------------*/
+.pins-foot { justify-content: space-between; gap: 8px; }
+.pins-list {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.pin-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 32px 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  transition: border-color 200ms var(--ease), transform 200ms var(--ease);
+}
+.pin-item:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.pin-item-text {
+  grid-column: 1 / 3;
+  grid-row: 1 / 2;
+  font-size: 12px;
+  color: var(--fg);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.45;
+}
+.pin-item-meta {
+  grid-column: 1 / 3;
+  grid-row: 2 / 3;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px;
+  color: var(--fg-soft);
+  font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+.pin-item-meta .dot-sep { opacity: 0.4; }
+.pin-item-remove {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-soft);
+  cursor: pointer;
+  transition: background 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease);
+}
+.pin-item-remove:hover {
+  color: rgb(var(--bad));
+  background: rgb(var(--bad) / 0.10);
+  border-color: rgb(var(--bad) / 0.35);
+}
+.pin-item-remove:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--accent) / 0.6);
 }
 
 .empty {

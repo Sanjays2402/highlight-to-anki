@@ -41,12 +41,15 @@ const MENU_ID_CLOZE = "h2a-send-to-anki-cloze";
 const MENU_ID_REVERSE = "h2a-send-to-anki-reverse";
 const MENU_ID_IMAGE = "h2a-send-image-to-anki";
 const MENU_ID_BATCH = "h2a-add-to-batch";
+const MENU_ID_PIN = "h2a-pin-snippet";
 const MENU_ID_EDIT = "h2a-edit-and-send";
 const MENU_ID_SHOT = "h2a-screenshot-region";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
 const BATCH_KEY = "h2a:batch";
 const BATCH_LIMIT = 100;
+const PINS_KEY = "h2a:pins";
+const PINS_LIMIT = 100;
 const HISTORY_KEY = "h2a:history";
 const HISTORY_LIMIT = 50;
 const SETTINGS_KEY = "h2a:settings";
@@ -309,7 +312,75 @@ function ensureMenu() {
         if (err) console.warn(TAG, "batch menu create error:", err.message);
       },
     );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_PIN,
+        title: "Pin Snippet",
+        contexts: ["selection"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "pin menu create error:", err.message);
+      },
+    );
   });
+}
+
+/**
+ * Append a snippet to the pinned-snippets list. Pinned snippets are
+ * captures the user wants to revisit and batch-send later, surfaced
+ * in the popup. Newest-first FIFO bounded at {@link PINS_LIMIT}.
+ *
+ * @param {object} capture
+ * @returns {Promise<object|null>} the pinned row, or null when empty.
+ */
+async function addPin(capture) {
+  if (!capture || (!capture.text && !capture.imageUrl)) return null;
+  const store = await chrome.storage.local.get(PINS_KEY);
+  const list = Array.isArray(store[PINS_KEY]) ? store[PINS_KEY] : [];
+  const row = {
+    id: `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    text: (capture.text || "").slice(0, 1000),
+    html: capture.html || "",
+    imageUrl: capture.imageUrl || "",
+    url: capture.url || "",
+    title: capture.title || "",
+    hostname: capture.hostname || "",
+    paragraph: capture.paragraph || "",
+    pinnedAt: new Date().toISOString(),
+  };
+  list.unshift(row);
+  if (list.length > PINS_LIMIT) list.length = PINS_LIMIT;
+  await chrome.storage.local.set({ [PINS_KEY]: list });
+  return row;
+}
+
+/**
+ * Move every pinned snippet onto the batch queue and clear the pin
+ * store. The popup uses this to flip a stack of read-later snippets
+ * into the normal batch-send pipeline in a single click.
+ *
+ * @returns {Promise<{ moved: number, pins: object[], batch: object[] }>}
+ */
+async function sendPinsToBatch(ids) {
+  const store = await chrome.storage.local.get([PINS_KEY, BATCH_KEY]);
+  const pins = Array.isArray(store[PINS_KEY]) ? store[PINS_KEY] : [];
+  const batch = Array.isArray(store[BATCH_KEY]) ? store[BATCH_KEY] : [];
+  const idSet = Array.isArray(ids) && ids.length ? new Set(ids) : null;
+  const toMove = idSet ? pins.filter((p) => p && idSet.has(p.id)) : pins.slice();
+  const remaining = idSet ? pins.filter((p) => p && !idSet.has(p.id)) : [];
+  for (const p of toMove) {
+    batch.push({
+      ...p,
+      id: `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      status: "queued",
+      noteId: null,
+      error: null,
+    });
+  }
+  if (batch.length > BATCH_LIMIT) batch.splice(0, batch.length - BATCH_LIMIT);
+  await chrome.storage.local.set({ [PINS_KEY]: remaining, [BATCH_KEY]: batch });
+  return { moved: toMove.length, pins: remaining, batch };
 }
 
 /**
@@ -1036,9 +1107,10 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     const isReverse = info.menuItemId === MENU_ID_REVERSE;
     const isImage = info.menuItemId === MENU_ID_IMAGE;
     const isBatch = info.menuItemId === MENU_ID_BATCH;
+    const isPin = info.menuItemId === MENU_ID_PIN;
     const isEdit = info.menuItemId === MENU_ID_EDIT;
     const isShot = info.menuItemId === MENU_ID_SHOT;
-    if (!isBasic && !isCloze && !isReverse && !isImage && !isBatch && !isEdit && !isShot) return;
+    if (!isBasic && !isCloze && !isReverse && !isImage && !isBatch && !isPin && !isEdit && !isShot) return;
     if (!tab || tab.id == null) return;
     if (isShot) {
       const result = await startScreenshotRegionFlow(tab);
@@ -1058,6 +1130,14 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
       if (entry) {
         await openEditorWindow(entry.id);
       }
+      return;
+    }
+    if (isPin) {
+      const pinned = await addPin(capture);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:pins-updated", payload: pinned });
+      } catch (_) { /* no popup open */ }
+      if (pinned) console.log(TAG, "pinned snippet", (capture.text || "").slice(0, 60));
       return;
     }
     if (isBatch) {
@@ -1416,6 +1496,47 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   if (msg.type === "h2a:clear-history") {
     chrome.storage.local.set({ [HISTORY_KEY]: [] }).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.type === "h2a:list-pins") {
+    chrome.storage.local.get(PINS_KEY).then((store) => {
+      sendResponse({ ok: true, payload: store[PINS_KEY] || [] });
+    });
+    return true;
+  }
+  if (msg.type === "h2a:remove-pin") {
+    (async () => {
+      const id = msg.payload && msg.payload.id;
+      if (!id) { sendResponse({ ok: false, error: "missing id" }); return; }
+      const store = await chrome.storage.local.get(PINS_KEY);
+      const list = Array.isArray(store[PINS_KEY]) ? store[PINS_KEY] : [];
+      const next = list.filter((p) => p && p.id !== id);
+      await chrome.storage.local.set({ [PINS_KEY]: next });
+      try { await chrome.runtime.sendMessage({ type: "h2a:pins-updated", payload: null }); } catch (_) { /* no popup */ }
+      sendResponse({ ok: true, payload: next });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:clear-pins") {
+    chrome.storage.local.set({ [PINS_KEY]: [] }).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg.type === "h2a:pin-snippet") {
+    (async () => {
+      const pin = await addPin(msg.payload || {});
+      try { await chrome.runtime.sendMessage({ type: "h2a:pins-updated", payload: pin }); } catch (_) { /* no popup */ }
+      sendResponse({ ok: !!pin, payload: pin });
+    })();
+    return true;
+  }
+  if (msg.type === "h2a:send-pins-to-batch") {
+    (async () => {
+      const ids = msg.payload && Array.isArray(msg.payload.ids) ? msg.payload.ids : null;
+      const result = await sendPinsToBatch(ids);
+      try { await chrome.runtime.sendMessage({ type: "h2a:pins-updated", payload: null }); } catch (_) { /* no popup */ }
+      try { await chrome.runtime.sendMessage({ type: "h2a:batch-updated", payload: null }); } catch (_) { /* no popup */ }
+      sendResponse({ ok: true, payload: result });
+    })();
     return true;
   }
   if (msg.type === "h2a:list-batch") {
