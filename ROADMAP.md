@@ -36,3 +36,13 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Smart deduplication using fuzzy match (Levenshtein) not just exact
 - [x] Reading mode: distraction-free overlay before sending
 - [x] Per-deck color accents in popup card preview
+- [ ] Spaced-review queue: in-popup mini-reviewer for due cards via AnkiConnect
+- [ ] Selection translation: optional translation field with source language tag
+- [ ] PDF text capture: support text selection in chrome-extension PDF viewer
+- [ ] Audio TTS field: generate pronunciation audio for selection via SpeechSynthesis
+- [ ] Tag suggestions: autocomplete tags from existing Anki tags in send dialog
+- [ ] Bulk import: paste a list of lines, one card per line, into a target deck
+- [ ] Card templates gallery: pick from preset front/back layouts in options
+- [ ] Highlight persistence: re-highlight previously sent selections on revisit
+- [ ] Per-domain blocklist: disable context menu and shortcuts on listed sites
+- [ ] Sync queue: retry failed sends when AnkiConnect comes back online
