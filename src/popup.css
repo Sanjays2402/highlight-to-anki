@@ -554,6 +554,32 @@ body[data-theme="light"] .glass::after {
 
 /* Preview card ------------------------------------------------------------- */
 #preview-card[hidden] { display: none; }
+.deck-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--accent) / 0.45);
+  background: rgb(var(--accent) / 0.12);
+  color: rgb(var(--accent));
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  max-width: 100%;
+}
+.deck-chip .deck-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--accent));
+  box-shadow: 0 0 0 2px rgb(var(--accent) / 0.18);
+  flex: 0 0 auto;
+}
+.deck-chip .deck-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .preview-foot { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .preview-face {
   position: relative;

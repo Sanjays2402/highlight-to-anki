@@ -10,7 +10,9 @@ import {
   buildCardFields,
   buildClozeFields,
   buildImageCardFields,
+  deckAccentRgb,
   escapeHtml,
+  resolveSiteDeck,
 } from "./anki.js";
 
 const TAG = "[highlight-to-anki:popup]";
@@ -63,6 +65,9 @@ const els = {
   previewFront: document.getElementById("preview-front"),
   previewBack: document.getElementById("preview-back"),
   previewSource: document.getElementById("preview-source"),
+  previewDeckRow: document.getElementById("preview-deck-row"),
+  previewDeckChip: document.getElementById("preview-deck-chip"),
+  previewDeckName: document.getElementById("preview-deck-name"),
   previewErrorRow: document.getElementById("preview-error-row"),
   previewError: document.getElementById("preview-error"),
   previewDismiss: document.getElementById("preview-dismiss"),
@@ -342,6 +347,30 @@ function showToast({ tone = "ok", title, message, noteId = null, duration = TOAS
 }
 
 let activePreviewId = null;
+let cachedSettings = null;
+
+async function loadSettings() {
+  try {
+    const reply = await chrome.runtime.sendMessage({ type: "h2a:get-settings" });
+    if (reply && reply.ok) cachedSettings = reply.payload || {};
+  } catch (err) {
+    console.warn(TAG, "settings load failed:", err);
+  }
+  return cachedSettings || {};
+}
+
+/**
+ * Resolve the deck name a capture would target based on cached
+ * settings + per-site rules. Falls back to the configured default.
+ */
+function resolvePreviewDeck(entry) {
+  if (!entry) return "";
+  if (entry.deck) return entry.deck;
+  const s = cachedSettings || {};
+  const isCloze = entry.mode === "cloze";
+  const fallback = (isCloze ? s.defaultClozeDeck : null) || s.defaultDeck || "";
+  return resolveSiteDeck(s.siteRules, entry.hostname) || fallback;
+}
 
 function setPill(state, label) {
   if (!els.pill) return;
@@ -850,6 +879,15 @@ function showPreviewError(msg) {
 function renderPreview(entry) {
   if (!entry || !els.previewCard) return;
   activePreviewId = entry.id || null;
+  // Per-deck accent tint: hash the resolved deck name into a stable
+  // palette and override --accent on this card only. CSS already
+  // drives every accent surface from `rgb(var(--accent) / a)`.
+  const previewDeck = resolvePreviewDeck(entry);
+  const accent = deckAccentRgb(previewDeck);
+  els.previewCard.style.setProperty("--accent", accent);
+  els.previewCard.style.setProperty("--accent-strong", accent);
+  if (els.previewDeckName) els.previewDeckName.textContent = previewDeck || "Default deck";
+  if (els.previewDeckRow) els.previewDeckRow.hidden = false;
   if (els.previewErrorRow) els.previewErrorRow.hidden = true;
   if (els.previewSend) {
     els.previewSend.disabled = false;
@@ -979,7 +1017,7 @@ loadBatch();
 loadPins();
 loadHistory();
 loadSync();
-loadInitialPreview();
+loadSettings().then(loadInitialPreview);
 
 // Light polling while popup is open so in-flight sends animate without push.
 const syncPoll = setInterval(loadSync, 2500);

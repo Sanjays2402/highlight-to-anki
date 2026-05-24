@@ -35,4 +35,4 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Pinned snippets: save selections for batch-send later
 - [x] Smart deduplication using fuzzy match (Levenshtein) not just exact
 - [x] Reading mode: distraction-free overlay before sending
-- [ ] Per-deck color accents in popup card preview
+- [x] Per-deck color accents in popup card preview

@@ -468,6 +468,43 @@ export function resolveSiteDeck(rules, hostname) {
 }
 
 /**
+ * Deterministic accent palette for per-deck color tinting in the
+ * preview card. Hashes the deck name into one of a small curated
+ * set of OKLCH-aware RGB triplets so the same deck always lights up
+ * the same hue. Returns the extension's default blue triplet when
+ * no deck name is supplied so callers can use it unconditionally.
+ *
+ * Triplets are formatted as `R G B` for direct interpolation into
+ * `rgb(var(--accent) / <alpha>)` (matches the popup CSS contract).
+ *
+ * @param {string|undefined|null} deckName
+ * @returns {string}
+ */
+export function deckAccentRgb(deckName) {
+  const palette = [
+    "142 197 255", // blue (default)
+    "167 139 250", // violet
+    "244 114 182", // pink
+    "248 113 113", // red
+    "251 146 60",  // orange
+    "250 204 21",  // amber
+    "163 230 53",  // lime
+    "74 222 128",  // green
+    "45 212 191",  // teal
+    "56 189 248",  // sky
+  ];
+  if (typeof deckName !== "string" || !deckName.trim()) return palette[0];
+  const key = deckName.trim().toLowerCase();
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const idx = Math.abs(hash) % palette.length;
+  return palette[idx];
+}
+
+/**
  * Extract the sentence that contains a given selection from a longer
  * surrounding paragraph. We split the paragraph on sentence-ending
  * punctuation (`.`/`!`/`?`/`…`) followed by whitespace, plus hard
