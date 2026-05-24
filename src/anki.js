@@ -889,9 +889,242 @@ export async function findNotes(query, opts = {}) {
 export async function findDuplicates(args) {
   const a = args || {};
   const query = buildDuplicateQuery({ deck: a.deck, text: a.text });
-  if (!query) return { query: "", noteIds: [], count: 0 };
+  if (!query) return { query: "", noteIds: [], count: 0, fuzzyMatches: [], fuzzyCount: 0 };
   const noteIds = await findNotes(query, { timeoutMs: a.timeoutMs, url: a.url });
-  return { query, noteIds, count: noteIds.length };
+  let fuzzyMatches = [];
+  // Fuzzy second pass: only run when the exact phrase did not already
+  // match. This keeps the hot path cheap while still catching near
+  // duplicates that differ in punctuation, whitespace, or a handful
+  // of typo-grade characters.
+  if (noteIds.length === 0) {
+    try {
+      fuzzyMatches = await findFuzzyDuplicates({
+        deck: a.deck,
+        text: a.text,
+        threshold: a.fuzzyThreshold,
+        timeoutMs: a.timeoutMs,
+        url: a.url,
+      });
+    } catch (_err) {
+      // Fuzzy search is a best-effort signal: never let it fail the
+      // exact-match query that already succeeded above.
+      fuzzyMatches = [];
+    }
+  }
+  return {
+    query,
+    noteIds,
+    count: noteIds.length,
+    fuzzyMatches,
+    fuzzyCount: fuzzyMatches.length,
+  };
+}
+
+// English stopwords kept short on purpose. The intent is to drop
+// connective tissue from the keyword query, not to do real NLP.
+const FUZZY_STOPWORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "have", "has", "are",
+  "was", "were", "but", "not", "you", "your", "our", "their", "them", "they",
+  "its", "about", "into", "onto", "over", "under", "than", "then", "will",
+  "would", "could", "should", "been", "being", "because", "some", "such",
+]);
+
+/**
+ * Tokenise free-form text into the salient keywords used to build a
+ * broader AnkiConnect query. Keeps Unicode letters/digits, lowercases,
+ * filters stopwords, and prefers longer tokens (more discriminating).
+ *
+ * @param {string} text
+ * @param {number} [limit=5]
+ * @returns {string[]}
+ */
+export function fuzzyTokens(text, limit = 5) {
+  const raw = String(text == null ? "" : text).toLowerCase();
+  if (!raw) return [];
+  // Split on anything that isn't a letter/digit. \p{L}/\p{N} keeps the
+  // tokeniser working for non-Latin scripts (Cyrillic, kana, etc.).
+  const parts = raw.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  const uniq = [];
+  const seen = new Set();
+  for (const t of parts) {
+    if (t.length < 4) continue;
+    if (FUZZY_STOPWORDS.has(t)) continue;
+    if (seen.has(t)) continue;
+    seen.add(t);
+    uniq.push(t);
+  }
+  uniq.sort((a, b) => b.length - a.length);
+  return uniq.slice(0, Math.max(1, limit | 0));
+}
+
+/**
+ * Build an AnkiConnect keyword query that broadens the search to find
+ * near-duplicates: any note containing one of the salient tokens from
+ * the selection, optionally scoped to a deck. Returns an empty string
+ * when the text has too few usable tokens.
+ *
+ * @param {{ deck?: string, text?: string, limit?: number }} args
+ * @returns {string}
+ */
+export function buildFuzzyQuery(args) {
+  const a = args || {};
+  const tokens = fuzzyTokens(a.text, a.limit || 5);
+  if (!tokens.length) return "";
+  const safe = tokens.map((t) => t.replace(/["\\]+/g, ""));
+  const parts = [];
+  const deck = (a.deck || "").trim();
+  if (deck) {
+    const safeDeck = deck.replace(/["\\]+/g, "");
+    parts.push(`deck:"${safeDeck}"`);
+  }
+  // AnkiConnect's search supports OR groupings. We require at least
+  // one of the salient tokens to be present in the note.
+  const or = safe.map((t) => `"${t}"`).join(" OR ");
+  parts.push(`(${or})`);
+  return parts.join(" ");
+}
+
+/**
+ * Compute the Levenshtein edit distance between two strings using a
+ * single-row dynamic programming buffer. Runs in O(len(a) * len(b))
+ * time and O(min(len(a), len(b))) space which is plenty for the
+ * snippet-sized inputs we feed it.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+export function levenshtein(a, b) {
+  const s = String(a == null ? "" : a);
+  const t = String(b == null ? "" : b);
+  if (s === t) return 0;
+  if (!s.length) return t.length;
+  if (!t.length) return s.length;
+  // Always iterate over the shorter string in the inner loop.
+  const [shortStr, longStr] = s.length <= t.length ? [s, t] : [t, s];
+  const m = shortStr.length;
+  const n = longStr.length;
+  let prev = new Array(m + 1);
+  let curr = new Array(m + 1);
+  for (let i = 0; i <= m; i++) prev[i] = i;
+  for (let j = 1; j <= n; j++) {
+    curr[0] = j;
+    const tj = longStr.charCodeAt(j - 1);
+    for (let i = 1; i <= m; i++) {
+      const cost = shortStr.charCodeAt(i - 1) === tj ? 0 : 1;
+      const del = prev[i] + 1;
+      const ins = curr[i - 1] + 1;
+      const sub = prev[i - 1] + cost;
+      let v = del < ins ? del : ins;
+      if (sub < v) v = sub;
+      curr[i] = v;
+    }
+    const tmp = prev; prev = curr; curr = tmp;
+  }
+  return prev[m];
+}
+
+/**
+ * Return a similarity ratio in [0, 1] derived from Levenshtein
+ * distance: 1 - distance / max(len). Returns 1 for two empty strings.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
+export function similarityRatio(a, b) {
+  const s = String(a == null ? "" : a);
+  const t = String(b == null ? "" : b);
+  const max = Math.max(s.length, t.length);
+  if (max === 0) return 1;
+  const d = levenshtein(s, t);
+  return 1 - d / max;
+}
+
+/**
+ * Normalise text for fuzzy comparison: lowercase, strip HTML, collapse
+ * whitespace, and keep only letters/digits/spaces. Keeps comparisons
+ * robust to the field-level HTML AnkiConnect returns for stored notes.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function normaliseForFuzzy(text) {
+  return String(text == null ? "" : text)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Fetch detailed info for one or more notes. Returns the raw
+ * AnkiConnect payload so callers can decide which fields to consult.
+ *
+ * @param {Array<number>} noteIds
+ * @param {{ timeoutMs?: number, url?: string }=} opts
+ * @returns {Promise<Array<object>>}
+ */
+export async function notesInfo(noteIds, opts = {}) {
+  const ids = (Array.isArray(noteIds) ? noteIds : [])
+    .map((n) => (typeof n === "number" ? n : Number(n)))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!ids.length) return [];
+  const result = await invoke("notesInfo", { notes: ids }, opts);
+  return Array.isArray(result) ? result : [];
+}
+
+/**
+ * Find near-duplicate notes whose content scores above `threshold`
+ * Levenshtein-similarity against the supplied selection. Capped at
+ * 25 candidates so the round-trip stays snappy on large collections.
+ *
+ * @param {{ deck?: string, text?: string, threshold?: number, candidateLimit?: number, timeoutMs?: number, url?: string }} args
+ * @returns {Promise<Array<{ noteId: number, score: number, snippet: string }>>}
+ */
+export async function findFuzzyDuplicates(args) {
+  const a = args || {};
+  const text = String(a.text == null ? "" : a.text);
+  const norm = normaliseForFuzzy(text);
+  if (norm.length < 8) return [];
+  const threshold = typeof a.threshold === "number" && a.threshold > 0 && a.threshold < 1
+    ? a.threshold
+    : 0.78;
+  const limit = a.candidateLimit || 25;
+  const query = buildFuzzyQuery({ deck: a.deck, text });
+  if (!query) return [];
+  const ids = await findNotes(query, { timeoutMs: a.timeoutMs, url: a.url });
+  if (!ids.length) return [];
+  const sliced = ids.slice(0, limit);
+  const info = await notesInfo(sliced, { timeoutMs: a.timeoutMs, url: a.url });
+  const hits = [];
+  // Truncate inputs so Levenshtein stays cheap on long fields.
+  const cap = 240;
+  const target = norm.slice(0, cap);
+  for (const note of info) {
+    if (!note || !note.fields) continue;
+    let best = 0;
+    let bestSnippet = "";
+    for (const key of Object.keys(note.fields)) {
+      const v = note.fields[key];
+      const fieldText = v && typeof v.value === "string" ? v.value : "";
+      const nf = normaliseForFuzzy(fieldText);
+      if (!nf) continue;
+      const candidate = nf.slice(0, cap);
+      const score = similarityRatio(target, candidate);
+      if (score > best) {
+        best = score;
+        bestSnippet = candidate.slice(0, 120);
+      }
+    }
+    if (best >= threshold) {
+      hits.push({ noteId: Number(note.noteId) || 0, score: best, snippet: bestSnippet });
+    }
+  }
+  hits.sort((a, b) => b.score - a.score);
+  return hits;
 }
 
 /**

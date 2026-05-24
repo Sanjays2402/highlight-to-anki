@@ -33,6 +33,6 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Custom CSS injection for Anki card styling per deck
 - [x] Selection context: capture surrounding sentence as additional field
 - [x] Pinned snippets: save selections for batch-send later
-- [ ] Smart deduplication using fuzzy match (Levenshtein) not just exact
+- [x] Smart deduplication using fuzzy match (Levenshtein) not just exact
 - [ ] Reading mode: distraction-free overlay before sending
 - [ ] Per-deck color accents in popup card preview

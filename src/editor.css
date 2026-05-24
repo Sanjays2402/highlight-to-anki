@@ -137,3 +137,8 @@ textarea.control { line-height: 1.5; font-family: "Inter", -apple-system, BlinkM
 }
 .dup-row .dup-icon { flex: 0 0 auto; }
 .dup-row .dup-text { color: var(--fg); }
+.dup-row[data-kind="fuzzy"] {
+  background: rgb(var(--accent) / 0.08);
+  border-color: rgb(var(--accent) / 0.30);
+  color: rgb(var(--accent));
+}

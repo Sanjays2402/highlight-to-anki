@@ -67,14 +67,32 @@ function showError(msg) {
 
 function showDuplicate(payload) {
   if (!els.dupRow || !els.dupText) return;
-  if (!payload || !payload.count) {
+  if (!payload) {
     els.dupRow.hidden = true;
     els.dupText.textContent = "Looks like a duplicate";
+    els.dupRow.dataset.kind = "";
     return;
   }
-  const n = payload.count;
-  const noun = n === 1 ? "note" : "notes";
-  els.dupText.textContent = `${n} existing ${noun} match this selection in this deck.`;
+  const exact = payload.count || 0;
+  const fuzzy = payload.fuzzyCount || 0;
+  if (!exact && !fuzzy) {
+    els.dupRow.hidden = true;
+    els.dupText.textContent = "Looks like a duplicate";
+    els.dupRow.dataset.kind = "";
+    return;
+  }
+  if (exact) {
+    const noun = exact === 1 ? "note" : "notes";
+    els.dupText.textContent = `${exact} existing ${noun} match this selection in this deck.`;
+    els.dupRow.dataset.kind = "exact";
+  } else {
+    const noun = fuzzy === 1 ? "note" : "notes";
+    const best = Array.isArray(payload.fuzzyMatches) && payload.fuzzyMatches[0];
+    const pct = best && typeof best.score === "number" ? Math.round(best.score * 100) : null;
+    const suffix = pct != null ? ` (best match ${pct}%)` : "";
+    els.dupText.textContent = `${fuzzy} similar ${noun} found in this deck${suffix}.`;
+    els.dupRow.dataset.kind = "fuzzy";
+  }
   els.dupRow.hidden = false;
 }
 
