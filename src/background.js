@@ -44,6 +44,7 @@ const MENU_ID_BATCH = "h2a-add-to-batch";
 const MENU_ID_PIN = "h2a-pin-snippet";
 const MENU_ID_EDIT = "h2a-edit-and-send";
 const MENU_ID_SHOT = "h2a-screenshot-region";
+const MENU_ID_READ = "h2a-read-and-send";
 const PENDING_KEY = "h2a:pendingCaptures";
 const PENDING_LIMIT = 25;
 const BATCH_KEY = "h2a:batch";
@@ -288,6 +289,17 @@ function ensureMenu() {
       () => {
         const err = chrome.runtime.lastError;
         if (err) console.warn(TAG, "edit menu create error:", err.message);
+      },
+    );
+    chrome.contextMenus.create(
+      {
+        id: MENU_ID_READ,
+        title: "Read & Send to Anki…",
+        contexts: ["selection"],
+      },
+      () => {
+        const err = chrome.runtime.lastError;
+        if (err) console.warn(TAG, "read menu create error:", err.message);
       },
     );
     chrome.contextMenus.create(
@@ -990,6 +1002,49 @@ async function sendEditedCapture(edits) {
 }
 
 /**
+ * Drive the reading-mode flow. Mounts a distraction-free overlay on
+ * the active tab showing the staged capture in a calm, focused
+ * surface so the user can re-read the passage before committing it
+ * to Anki. The overlay returns either a confirm or cancel verdict;
+ * confirm triggers the standard send pipeline (basic note) and a
+ * popup broadcast, cancel discards.
+ *
+ * @param {number} tabId
+ * @param {object} entry pending capture entry
+ * @returns {Promise<{ ok: boolean, broadcast?: object, error?: string }>}
+ */
+async function startReadingModeFlow(tabId, entry) {
+  if (tabId == null || !entry) return { ok: false, error: "no entry" };
+  let reply;
+  try {
+    reply = await chrome.tabs.sendMessage(tabId, { type: "h2a:start-reading-mode", payload: entry });
+  } catch (err) {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ["src/content.js"] });
+      reply = await chrome.tabs.sendMessage(tabId, { type: "h2a:start-reading-mode", payload: entry });
+    } catch (err2) {
+      console.warn(TAG, "reading: cannot reach page:", err2 && err2.message);
+      return { ok: false, error: "page not scriptable" };
+    }
+  }
+  if (!reply || !reply.ok || !reply.payload || reply.payload.action !== "confirm") {
+    console.log(TAG, "reading: cancelled");
+    return { ok: false, error: "cancelled" };
+  }
+  const settings = await loadSettings();
+  if (!settings.defaultDeck || !settings.defaultModel) {
+    return { ok: true, broadcast: { type: "h2a:capture-staged", payload: entry } };
+  }
+  const result = await sendCaptureToAnki(entry);
+  if (result.ok) {
+    console.log(TAG, "reading: sent note", result.noteId, "→", settings.defaultDeck);
+  } else {
+    console.warn(TAG, "reading: send failed:", result.error);
+  }
+  return { ok: result.ok, broadcast: { type: "h2a:capture-sent", payload: result }, error: result.error || undefined };
+}
+
+/**
  * Drive the selection-screenshot flow: inject the region overlay,
  * capture the visible tab as a PNG, crop to the selected rectangle
  * via OffscreenCanvas, stage the resulting data: URL as an image
@@ -1110,7 +1165,8 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     const isPin = info.menuItemId === MENU_ID_PIN;
     const isEdit = info.menuItemId === MENU_ID_EDIT;
     const isShot = info.menuItemId === MENU_ID_SHOT;
-    if (!isBasic && !isCloze && !isReverse && !isImage && !isBatch && !isPin && !isEdit && !isShot) return;
+    const isRead = info.menuItemId === MENU_ID_READ;
+    if (!isBasic && !isCloze && !isReverse && !isImage && !isBatch && !isPin && !isEdit && !isShot && !isRead) return;
     if (!tab || tab.id == null) return;
     if (isShot) {
       const result = await startScreenshotRegionFlow(tab);
@@ -1122,6 +1178,18 @@ if (chrome.contextMenus && chrome.contextMenus.onClicked) {
     const capture = isImage
       ? captureFromImage(info, tab)
       : await requestCapture(tab.id, info.selectionText);
+    if (isRead) {
+      const entry = await stagePending(capture);
+      try {
+        await chrome.runtime.sendMessage({ type: "h2a:capture-staged", payload: entry || capture });
+      } catch (_) { /* no popup open */ }
+      if (!entry) return;
+      const result = await startReadingModeFlow(tab.id, entry);
+      if (result && result.broadcast) {
+        try { await chrome.runtime.sendMessage(result.broadcast); } catch (_) { /* no popup open */ }
+      }
+      return;
+    }
     if (isEdit) {
       const entry = await stagePending(capture);
       try {
