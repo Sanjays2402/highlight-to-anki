@@ -31,7 +31,7 @@ This file is the agent's task queue. Unchecked items get implemented in order. W
 - [x] Reverse card mode: generate front/back swapped cards on demand
 - [x] Multi-language detection and auto-tag by detected language
 - [x] Custom CSS injection for Anki card styling per deck
-- [ ] Selection context: capture surrounding sentence as additional field
+- [x] Selection context: capture surrounding sentence as additional field
 - [ ] Pinned snippets: save selections for batch-send later
 - [ ] Smart deduplication using fuzzy match (Levenshtein) not just exact
 - [ ] Reading mode: distraction-free overlay before sending

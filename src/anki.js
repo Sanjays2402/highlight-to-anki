@@ -468,12 +468,53 @@ export function resolveSiteDeck(rules, hostname) {
 }
 
 /**
+ * Extract the sentence that contains a given selection from a longer
+ * surrounding paragraph. We split the paragraph on sentence-ending
+ * punctuation (`.`/`!`/`?`/`…`) followed by whitespace, plus hard
+ * newlines. Returns the trimmed sentence that contains the selection
+ * verbatim, or an empty string when the paragraph is missing, the
+ * selection cannot be located, or the candidate sentence is identical
+ * to the selection or to the entire paragraph (in which case no extra
+ * context would be carried).
+ *
+ * Exposed so the card builder and the editor preview can both surface
+ * the sentence as an extra field on the resulting card.
+ *
+ * @param {string|undefined|null} paragraph
+ * @param {string|undefined|null} selection
+ * @returns {string}
+ */
+export function extractSentence(paragraph, selection) {
+  const para = (paragraph == null ? "" : String(paragraph)).trim();
+  const sel = (selection == null ? "" : String(selection)).trim();
+  if (!para || !sel) return "";
+  if (!para.includes(sel)) return "";
+  if (para === sel) return "";
+  // Sentence boundaries: punctuation followed by whitespace, or hard
+  // line breaks. We keep the punctuation with the preceding sentence
+  // via a lookbehind-style split.
+  const parts = para
+    .split(/(?<=[.!?\u2026])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return "";
+  for (const sentence of parts) {
+    if (sentence.includes(sel)) {
+      if (sentence === sel) return "";
+      if (sentence === para) return "";
+      return sentence;
+    }
+  }
+  return "";
+}
+
+/**
  * Build the `{ front, back }` field payload for a basic note from a
  * capture snapshot. Front is the raw selection text; back is the
  * surrounding paragraph (when available) plus a linked citation back
  * to the source page. Both sides are HTML-safe.
  *
- * @param {{ text?: string, paragraph?: string, url?: string, title?: string, hostname?: string }} capture
+ * @param {{ text?: string, paragraph?: string, sentence?: string, url?: string, title?: string, hostname?: string }} capture
  * @returns {{ front: string, back: string }}
  */
 export function buildCardFields(capture) {
@@ -482,10 +523,18 @@ export function buildCardFields(capture) {
   const paragraph = (cap.paragraph || "").trim();
   const url = (cap.url || "").trim();
   const title = (cap.title || cap.hostname || url || "source").trim();
+  // Sentence may be precomputed by the content script; fall back to
+  // deriving it on the fly from the paragraph so older capture payloads
+  // still pick the feature up.
+  const sentence = (cap.sentence && String(cap.sentence).trim())
+    || extractSentence(paragraph, text);
 
   const front = renderInlineMarkdown(escapeHtml(text)).replace(/\n+/g, "<br>");
 
   const parts = [];
+  if (sentence && sentence !== text && sentence !== paragraph) {
+    parts.push(`<p class="h2a-sentence">${renderInlineMarkdown(escapeHtml(sentence)).replace(/\n+/g, "<br>")}</p>`);
+  }
   if (paragraph && paragraph !== text) {
     parts.push(`<blockquote class="h2a-context">${renderInlineMarkdown(escapeHtml(paragraph)).replace(/\n+/g, "<br>")}</blockquote>`);
   }

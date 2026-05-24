@@ -35,6 +35,23 @@
       if (block) paragraph = (block.innerText || block.textContent || "").trim();
     }
 
+    // Derive the surrounding sentence so the back of the card can
+    // carry it as an extra field. Mirrors src/anki.js#extractSentence
+    // but lives inline because the content script is not a module.
+    let sentence = "";
+    if (paragraph && text && paragraph !== text && paragraph.indexOf(text) !== -1) {
+      const parts = paragraph
+        .split(/(?<=[.!?\u2026])\s+|\n+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const s of parts) {
+        if (s.indexOf(text) !== -1) {
+          if (s !== text && s !== paragraph) sentence = s;
+          break;
+        }
+      }
+    }
+
     return {
       text,
       html,
@@ -42,6 +59,7 @@
       title: document.title,
       hostname: location.hostname,
       paragraph,
+      sentence,
       capturedAt: new Date().toISOString(),
     };
   }
